@@ -1,30 +1,5 @@
-
-#include <stdio.h>
-#include <stddef.h>
-#include <stdint.h>
-
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#include <freertos/semphr.h>
-
-#include <driver/gpio.h>
-#include <driver/i2s.h>
-#include <driver/adc.h>
-
-#include <esp_adc_cal.h>
-
-#include <string.h>
-
-#include "soc/dport_reg.h"
-#include "soc/rtc_cntl_reg.h"
-#include "soc/rtc_io_reg.h"
-#include "soc/sens_reg.h"
-#include "soc/rtc.h"
-#include "soc/efuse_reg.h"
-#include "esp32/rom/lldesc.h"
-#include "soc/syscon_struct.h"
-
-typedef uint16_t adc_sample_t;
+// Include used libraries
+#include "smartmeter.h"					// Smartmeter header
 
 
 // # Current sensor configuration:
@@ -140,5 +115,28 @@ static void testAdc(void *p)
 
 void app_main(void)
 {
-    xTaskCreate(testAdc, "testAdc", 1024 * 8, NULL, configMAX_PRIORITIES - 1, NULL);
+    // start the main task
+    //xTaskCreate(&connect_to_wifi, "con2WIFI", 2048, NULL, 5, NULL);
+    //set RGB PINs
+    gpio_pad_select_gpio(LED_R);
+    gpio_pad_select_gpio(LED_G);
+    gpio_pad_select_gpio(LED_B);
+    
+    gpio_set_direction(LED_R, GPIO_MODE_OUTPUT);
+    gpio_set_direction(LED_G, GPIO_MODE_OUTPUT);
+    gpio_set_direction(LED_B, GPIO_MODE_OUTPUT);
+
+    esp_err_t ret = nvs_flash_init();
+
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+    {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+
+    ESP_ERROR_CHECK(ret);
+
+
+    wifi_init_softap();
+    //xTaskCreate(testAdc, "testAdc", 1024 * 8, NULL, configMAX_PRIORITIES - 1, NULL);
 }
