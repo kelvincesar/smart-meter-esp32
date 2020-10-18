@@ -6,6 +6,8 @@
 #include <time.h>							// C standard library with date and time functions
 #include "freertos/FreeRTOS.h"				// FreeRTOS library with RTOS functions and constants
 #include "freertos/task.h"					// FreeRTOS library with task functions
+
+
 //#include <freertos/semphr.h>
 #include "esp_err.h"						// ESP-IDF library for error codes and error handling
 #include "esp_log.h"						// ESP-IDF logging library
@@ -39,18 +41,24 @@
 // - Watchdog
 #include "soc/timer_group_reg.h"
 #include "soc/timer_group_struct.h"
+
+
+// Define uint to adc sample
+typedef uint16_t adc_sample_t;
+
 // #-------------------------------------
 // # Global variables 
 // #-------------------------------------
 
 static const char *TAG_SM = "SM";	        // Define log tag
 
+
+
 // Task handles
 TaskHandle_t sample_read_task_handle = NULL;	    // sample_read_task handle
 TaskHandle_t signal_generator_task_handle = NULL;	// signal_generator_task handle
 
-// Define uint to adc sample
-typedef uint16_t adc_sample_t;
+
 
 // Measurements sample task
 void sample_read_task(void *parameters);
