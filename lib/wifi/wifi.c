@@ -70,6 +70,7 @@ static esp_err_t event_handler(void *ctx, system_event_t *event)
 
 static esp_err_t servePage_get_handler(httpd_req_t *req)
 {
+    /*
     httpd_resp_sendstr_chunk(req, "<!DOCTYPE html><html>");
 
     httpd_resp_sendstr_chunk(req, "<head>");
@@ -101,7 +102,8 @@ static esp_err_t servePage_get_handler(httpd_req_t *req)
     httpd_resp_sendstr_chunk(req, "</script>");
 
     httpd_resp_sendstr_chunk(req, "</body></html>");
-
+    */
+    //char response [];
     httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
 }

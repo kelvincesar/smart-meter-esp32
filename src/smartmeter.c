@@ -2,48 +2,11 @@
 #include "smartmeter.h"					// Smartmeter header
 
 
-// # Current sensor configuration:
-#define S_AMP_RATIO         1                               // Current sensor ratio;
-#define ADC_CURRENT_CHANNEL 6                               // Define channel used to measure current
-// # Voltage sensor configuration:
-#define S_VOL_RATIO         1                               // Voltage sensor ratio;
-#define ADC_VOLTAGE_CHANNEL 7                               // Define channel used to measure voltage
-
-
-// # ADC configuration:
-#define MAIN_FREQ           60                              // Main signal frequency in Hz;
-#define I2S_NUM 0                                           // I2S drive number;
-#define ADC_NUM_OF_CH 2                                     // Number of channels that are read;
-#define ADC_SAMPLING_RATE   61440                           // Sampling rate in Hz
-#define ADC_BUFFER_SIZE     (ADC_SAMPLING_RATE/MAIN_FREQ)   // Calculate buffer size (limit: 1024)
-
-#define ADC_DMA_COUNT       8                               // Number of DMA buffers
-
-#define ADC_GET_MEASURE(s)  (s & 0xFFF)                     // Macro used to get 12 bit part from adc read;
-#define ADC_V_REF           3300                            // ADC Voltage reference in mV;
-#define ADC_RESOLUTION      4096                            // ADC resolution
-#define ADC_SIGNAL_IS_AC    true                            // Define that signal read is AC;
-#define ADC_SIGNAL_OFFSET   2048                            // Define offset for AC signal;
-
-// # Signal generator:
-#define SIN_WAVE_NUM        255                             // Number of samples per period  
-
-// Redefine array para zero
-#define ZERO_ANY(T, a, n) do{\
-   T *a_ = (a);\
-   size_t n_ = (n);\
-   for (; n_ > 0; --n_, ++a_)\
-     *a_ = (T) { 0 };\
-} while (0)
-
-#define ENABLE_DEBUG                                        // Enable debug mode
-
-
 static void adc_i2s_init(void)
 {
     static const i2s_config_t i2s_config = {
         .mode = I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_ADC_BUILT_IN,
-        .sample_rate = ADC_SAMPLING_RATE,
+        .sample_rate = ADC_SAMPLE_RATE,
         .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
         .communication_format = I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_LSB,
         .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
@@ -97,7 +60,7 @@ void signal_generator_task(void *parameters)
     };
 
     uint16_t i = 0;
-    // Enable DAC CHANNEL 1
+    // Enable DAC CHANNEL 1 - GPIO25
     dac_output_enable(DAC_CHANNEL_1);
     int64_t start_time = 0;
     while (true){
@@ -118,30 +81,87 @@ void signal_generator_task(void *parameters)
     }
 }
 
+void compute_goertzel(){
 
+    // - Goertzel
+	float dft[3][2] = {                 
+		{0, 59},                        // {amplitude, frequency}
+		{0, 60},                        // {amplitude, frequency}
+		{0, 61}                         // {amplitude, frequency}
+	};
+    // Compute goertzel 
+	for (int i = 0; i < G_MAIN_FREQ_NUM; i++){
+		goertzel_handle = goertzel(&buf_voltage, &g_state, dft[i][1], buf_voltage.size);
+        printf("g_state.DFT_m %f\n", g_state.DFT_m);
+		dft[i][0] = S_VOL_RATIO * g_state.DFT_m;
+	}
+	// Debug
+	printf("%f, %f\n", dft[0][0], dft[0][1]);
+	printf("%f, %f\n", dft[1][0], dft[1][1]);
+	printf("%f, %f\n", dft[2][0], dft[2][1]);
+
+	// Interpolation
+	int epsilon = (dft[2][0] >= dft[0][0]) ? 1 : -1;
+	printf("%d epsilon\n", epsilon);
+	float alpha = dft[1 + epsilon][0] / dft[1][0];
+	float delta =  (2*alpha - 1) / (alpha + 1);
+
+	float frequency = (60 + epsilon*delta);
+
+	printf("frequency: %f\n", frequency);
+}
 
 void sample_read_task(void *parameters)
 {
-    	// Local variables
-	int64_t start_time = 0;        			// Start time tick [us]
-	int64_t end_time = 0;          			// End time tick [us]
-	float time_spent = 0;					// Time spent in the execution [s]
+    // # Define ADC Characteristics for convertion
     esp_adc_cal_characteristics_t cal;
     esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, ADC_V_REF, &cal);
 
+    // # Declare I2S variables
+    adc_sample_t buf[ADC_BUFFER_SIZE];  // Raw buffer with measures from ADC;  
+    size_t measures_read;               // Receive number of measures read from I2S - ADC
+    
+    // # Declare local variables
+    int16_t voltage_converted = 0;      // Voltage read;
+    int16_t current_converted = 0;      // Current read;
+
+    u16_t current_ch_off = 0;           // Offset applied to get current measure from buffer
+    u16_t voltage_ch_off = 0;           // Offset applied to get voltage measure from buffer
+    u16_t num_samples = 0;  
+
+    // # Debug
+	int64_t start_time = 0;             // Start time tick [us]
+	int64_t end_time = 0;               // End time tick [us]
+	float time_spent = 0;	            // Time spent in the execution [s]
+
+    // # Start ADC I2S Setup
     adc_i2s_init();
 
-    adc_sample_t buf[ADC_BUFFER_SIZE];
+    while (true) {
+    //for (int k = 0; k < 1; ++k) {
+        // Verify buffer size
+        if(buf_voltage.size >= BUFFER_SIZE){
+            /*
+            // Debug
+            for(uint16_t x = 0; x < buf_voltage.size ; x++){
+                printf("Buffer [%d] = %d\n", x, buf_voltage.data[x]);
+                //vTaskDelay(500 / portTICK_PERIOD_MS);
+            }
+            */
+            // # Apply goertzel:
+            start_time = esp_timer_get_time();      // Debug
+            compute_goertzel();
+            // Obtain current time
+            end_time = esp_timer_get_time();
 
-
-
-    //read data from I2S bus, in this case, from ADC.
-    size_t measures_read;
-    // Obtain current time
-    //i2s_adc_enable(I2S_NUM);
-    //while (true) {
-    for (int k = 0; k < 1; ++k) {
-        
+            // Calculating time spent
+            time_spent = (float)(end_time - start_time) / 1000000;
+            printf("compute_goertzel execution time = %f us", time_spent);
+            // Clean buffer
+            buffer_clean(&buf_voltage);
+            break;
+        }
+        // # Read data from i2s.
         esp_err_t err = i2s_read(I2S_NUM, buf, sizeof(buf), &measures_read, portMAX_DELAY);
 
         if (err != ESP_OK)
@@ -149,25 +169,11 @@ void sample_read_task(void *parameters)
             printf("i2s_read: %d\n", err);
         }
 
-        //DBG_ASSERT(measures_read % sizeof(adc_sample_t) == 0);
         measures_read /= sizeof(adc_sample_t);
+        num_samples = measures_read/2;          // 2 channels
 
-        int32_t voltage_converted = 0;  // Voltage read;
-        int32_t current_converted = 0;  // Current read;
+        
 
-
-        uint32_t sum_voltage = 0;   // Voltage sum;
-        uint32_t sum_current = 0;   // Current sum;
-        uint32_t sum_active_power  = 0;     // Power sum;
-
-        float rms_voltage = 0;
-        float rms_current = 0;
-        float active_power = 0;
-
-        u16_t current_ch_off = 0;   // Offset applied to get current measure from buffer
-        u16_t voltage_ch_off = 0;   // Offset applied to get voltage measure from buffer
-        u16_t num_samples = measures_read/2;
-        start_time = esp_timer_get_time();
         // Get channels offset on buffer
         switch (buf[0] >> 12){
             case ADC_CURRENT_CHANNEL:
@@ -184,32 +190,24 @@ void sample_read_task(void *parameters)
 
         }
 
-        // Loop on measures to calculate sum square for RMS value
+        // Loop on measures to convert and save on buffer
         for (u16_t i = 0; i < measures_read; i += ADC_NUM_OF_CH)
         {
-            voltage_converted = esp_adc_cal_raw_to_voltage(ADC_GET_MEASURE(buf[i+voltage_ch_off]), &cal);  // - ADC_V_REF / 2       
-            current_converted = esp_adc_cal_raw_to_voltage(ADC_GET_MEASURE(buf[i+current_ch_off]), &cal);  // - ADC_V_REF / 2
-            
+            voltage_converted = esp_adc_cal_raw_to_voltage(ADC_GET_MEASURE(buf[i+voltage_ch_off]), &cal) - ADC_V_REF / 2 ;  //       
+            current_converted = esp_adc_cal_raw_to_voltage(ADC_GET_MEASURE(buf[i+current_ch_off]), &cal) - ADC_V_REF / 2 ;  // - ADC_V_REF / 2
 
-            sum_voltage += (uint32_t) (voltage_converted*voltage_converted);
-            sum_current += (uint32_t) (current_converted*current_converted);
-            sum_active_power += (uint32_t) (voltage_converted*current_converted);
+            //printf("%d voltage_converted\n", voltage_converted);
+            // Insert data into buffers
+            buffer_handle = buffer_push(&buf_voltage, voltage_converted);
+            buffer_handle = buffer_push(&buf_current, current_converted);
+
+           //sum_voltage += (uint32_t) (voltage_converted*voltage_converted);
+           //sum_current += (uint32_t) (current_converted*current_converted);
+           //sum_active_power += (uint32_t) (voltage_converted*current_converted);
         }
 
-        rms_voltage = (float) sqrt(sum_voltage / num_samples);
-        rms_current = (float) sqrt(sum_current / num_samples);
-        active_power = (float) sum_active_power / num_samples;
-        // Obtain current time
-        end_time = esp_timer_get_time();
-        //printf("[measures_read VARIABLE] = %d\n", measures_read);
-        // Calculating time spent
-        time_spent = (float)(end_time - start_time) / 1000000;
-        // Printing after execution
-        printf("execution time = %f s\n", time_spent);
 
-        printf("Voltage RMS: %f mV\n", rms_voltage);
-        printf("Current RMS: %f mV\n", rms_current);
-        printf("Active Power: %f mV\n", active_power);
+
 
     }
     i2s_adc_disable(I2S_NUM);
@@ -220,13 +218,12 @@ void sample_read_task(void *parameters)
 
 void app_main(void)
 {
-    // start the main task
-    //xTaskCreate(&connect_to_wifi, "con2WIFI", 2048, NULL, 5, NULL);
+
     //set RGB PINs
     //gpio_pad_select_gpio(LED_R);
     //gpio_pad_select_gpio(LED_G);
     //gpio_pad_select_gpio(LED_B);
-    
+//
     //gpio_set_direction(LED_R, GPIO_MODE_OUTPUT);
     //gpio_set_direction(LED_G, GPIO_MODE_OUTPUT);
     //gpio_set_direction(LED_B, GPIO_MODE_OUTPUT);
@@ -239,6 +236,8 @@ void app_main(void)
         ret = nvs_flash_init();
     }
 
+
+
     ESP_ERROR_CHECK(ret);
     //wifi_init_softap();
 
@@ -248,7 +247,7 @@ void app_main(void)
 	// Print info to show main task is running
 	ESP_LOGI(TAG_SM, "# Running app_main in core %d", xPortGetCoreID());
 
-    /*
+    
     // Log task creation
 	ESP_LOGI(TAG_SM, "# Creating signal_generator task");
 
@@ -266,7 +265,7 @@ void app_main(void)
 	if (task_create_ret != pdPASS){ ESP_LOGE(TAG_SM, "Error creating signal_generator task"); }
 	// Delay 
 	vTaskDelay(1000 / portTICK_PERIOD_MS);
-    */
+    
     // Log task creation
 	ESP_LOGI(TAG_SM, "# Creating sample_read_task task");
 

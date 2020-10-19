@@ -16,6 +16,7 @@
 #include <stdio.h>                          // C standard library
 #include <stddef.h>                         // C standard library
 #include <stdint.h>                         // C standard library
+#include <stdlib.h>
 #include <math.h>
 
 #include <driver/gpio.h>                    // ESP-IDF library for gpio control
@@ -35,12 +36,50 @@
 
 // Application lib files
 #include "wifi.h"                           // Wi-fi functions
+#include "buffer.h"                         // Buffer library
+#include "goertzel.h"                       // Goertzel library
 
 // Signal generator library
 #include <driver/dac.h>
 // - Watchdog
 #include "soc/timer_group_reg.h"
 #include "soc/timer_group_struct.h"
+
+
+
+// ## DEFINES ##
+// # Current sensor configuration:
+#define S_AMP_RATIO         1                               // Current sensor ratio;
+#define ADC_CURRENT_CHANNEL 6                               // Define channel used to measure current
+// # Voltage sensor configuration:
+#define S_VOL_RATIO         0.15189                         // Voltage sensor ratio; 3.3/4095 * (2/3.3)*311
+#define ADC_VOLTAGE_CHANNEL 7                               // Define channel used to measure voltage
+
+
+// # ADC configuration:
+#define MAIN_FREQ           60                              // Main signal frequency in Hz;
+#define I2S_NUM 0                                           // I2S drive number;
+#define ADC_NUM_OF_CH 2                                     // Number of channels that are read;
+#define ADC_SAMPLE_RATE     8192                            // Sampling rate in Hz
+#define ADC_BUFFER_SIZE     1024                            // I2S Buffer size (limit: 1024)
+
+#define ADC_DMA_COUNT       32                              // Number of DMA buffers
+
+#define ADC_GET_MEASURE(s)  (s & 0xFFF)                     // Macro used to get 12 bit part from adc read;
+#define ADC_V_REF           3300                            // ADC Voltage reference in mV;
+#define ADC_RESOLUTION      4096                            // ADC resolution
+#define ADC_SIGNAL_IS_AC    true                            // Define that signal read is AC;
+#define ADC_SIGNAL_OFFSET   2048                            // Define offset for AC signal;
+
+// # Signal generator:
+#define SIN_WAVE_NUM        255                             // Number of samples per period  
+
+// # Goertzel
+#define G_MAIN_FREQ_NUM     3                               // Number of frequencies to use on interpolation
+
+
+
+#define ENABLE_DEBUG                                        // Enable debug mode
 
 
 // Define uint to adc sample
@@ -50,7 +89,17 @@ typedef uint16_t adc_sample_t;
 // # Global variables 
 // #-------------------------------------
 
-static const char *TAG_SM = "SM";	        // Define log tag
+// Buffer variables
+Buffer buf_voltage;
+Buffer buf_current;
+int16_t buffer_handle = 0;
+
+// Goertzel variables
+GoertzelState g_state;
+int16_t goertzel_handle = 0;
+
+
+static const char *TAG_SM = "SM";	        // Define general log tag
 
 
 
@@ -66,7 +115,8 @@ void sample_read_task(void *parameters);
 // Task to simulate signal
 void signal_generator_task(void *parameters);
 
-
+// Function to compute goertzel on signal read;
+void compute_goertzel();
 
 // End of the inclusion guard
 #endif
