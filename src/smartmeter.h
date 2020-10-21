@@ -76,7 +76,7 @@
 
 // # Goertzel
 #define G_MAIN_FREQ_NUM     3                               // Number of frequencies to use on interpolation
-
+#define G_NUM_OF_HARM       2                               // Define the number of harmonics
 
 
 #define ENABLE_DEBUG                                        // Enable debug mode
@@ -98,7 +98,23 @@ int16_t buffer_handle = 0;
 GoertzelState g_state;
 int16_t goertzel_handle = 0;
 
+// Main data structure
+typedef struct {
+	float v_rms;
+	float i_rms;
+	float aparrent_power;
+	float active_power;
+    float reactive_power;
+    float frequency;
+    float fp;
+    float THD_V;
+    float THD_I;
+    uint16_t pointer;
+} SmartMeter;
 
+
+
+//
 static const char *TAG_SM = "SM";	        // Define general log tag
 
 

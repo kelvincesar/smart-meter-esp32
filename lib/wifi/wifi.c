@@ -15,8 +15,8 @@ const int CONNECTED_BIT = BIT0;
 static const char *TAG = "ESP32_Server";
 
 
-static RTC_DATA_ATTR char __SSID[32];
-static RTC_DATA_ATTR char __PWD[64];
+static RTC_DATA_ATTR char __SSID[32] = SSID;
+static RTC_DATA_ATTR char __PWD[64] = PASSPHARSE;
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data)
 {
@@ -67,119 +67,6 @@ static esp_err_t event_handler(void *ctx, system_event_t *event)
     }
     return ESP_OK;
 }
-
-static esp_err_t servePage_get_handler(httpd_req_t *req)
-{
-    /*
-    httpd_resp_sendstr_chunk(req, "<!DOCTYPE html><html>");
-
-    httpd_resp_sendstr_chunk(req, "<head>");
-    httpd_resp_sendstr_chunk(req, "<style>");
-    httpd_resp_sendstr_chunk(req, "form {display: grid;padding: 1em; background: #f9f9f9; border: 1px solid #c1c1c1; margin: 2rem auto 0 auto; max-width: 400px; padding: 1em;}}");
-    httpd_resp_sendstr_chunk(req, "form input {background: #fff;border: 1px solid #9c9c9c;}");
-    httpd_resp_sendstr_chunk(req, "form button {background: lightgrey; padding: 0.7em;width: 100%; border: 0;");
-    httpd_resp_sendstr_chunk(req, "label {padding: 0.5em 0.5em 0.5em 0;}");
-    httpd_resp_sendstr_chunk(req, "input {padding: 0.7em;margin-bottom: 0.5rem;}");
-    httpd_resp_sendstr_chunk(req, "input:focus {outline: 10px solid gold;}");
-    httpd_resp_sendstr_chunk(req, "@media (min-width: 300px) {form {grid-template-columns: 200px 1fr; grid-gap: 16px;} label { text-align: right; grid-column: 1 / 2; } input, button { grid-column: 2 / 3; }}");
-    httpd_resp_sendstr_chunk(req, "</style>");
-    httpd_resp_sendstr_chunk(req, "</head>");
-
-    httpd_resp_sendstr_chunk(req, "<body>");
-    httpd_resp_sendstr_chunk(req, "<form class=\"form1\" id=\"loginForm\" action=\"\">");
-
-    httpd_resp_sendstr_chunk(req, "<label for=\"SSID\">WiFi Name</label>");
-    httpd_resp_sendstr_chunk(req, "<input id=\"ssid\" type=\"text\" name=\"ssid\" maxlength=\"64\" minlength=\"4\">");
-
-    httpd_resp_sendstr_chunk(req, "<label for=\"Password\">Password</label>");
-    httpd_resp_sendstr_chunk(req, "<input id=\"pwd\" type=\"password\" name=\"pwd\" maxlength=\"64\" minlength=\"4\">");
-
-    httpd_resp_sendstr_chunk(req, "<button>Submit</button>");
-    httpd_resp_sendstr_chunk(req, "</form>");
-
-    httpd_resp_sendstr_chunk(req, "<script>");
-    httpd_resp_sendstr_chunk(req, "document.getElementById(\"loginForm\").addEventListener(\"submit\", (e) => {e.preventDefault(); const formData = new FormData(e.target); const data = Array.from(formData.entries()).reduce((memo, pair) => ({...memo, [pair[0]]: pair[1],  }), {}); var xhr = new XMLHttpRequest(); xhr.open(\"POST\", \"http://192.168.1.1/connection\", true); xhr.setRequestHeader('Content-Type', 'application/json'); xhr.send(JSON.stringify(data)); document.getElementById(\"output\").innerHTML = JSON.stringify(data);});");
-    httpd_resp_sendstr_chunk(req, "</script>");
-
-    httpd_resp_sendstr_chunk(req, "</body></html>");
-    */
-    //char response [];
-    httpd_resp_send_chunk(req, NULL, 0);
-    return ESP_OK;
-}
-
-static const httpd_uri_t servePage = {
-    .uri = "/",
-    .method = HTTP_GET,
-    .handler = servePage_get_handler,
-    .user_ctx = NULL};
-
-static esp_err_t psw_ssid_get_handler(httpd_req_t *req)
-{
-    char buf[128];
-    int ret, remaining = req->content_len;
-
-    while (remaining > 0)
-    {
-        /* Read the data for the request */
-        if ((ret = httpd_req_recv(req, buf,
-                                  MIN(remaining, sizeof(buf)))) <= 0)
-        {
-            if (ret == 0)
-            {
-                ESP_LOGI(TAG, "No content received please try again ...");
-            }
-            else if (ret == HTTPD_SOCK_ERR_TIMEOUT)
-            {
-
-                /* Retry receiving if timeout occurred */
-                continue;
-            }
-            return ESP_FAIL;
-        }
-
-        cJSON *root = cJSON_Parse(buf);
-
-        sprintf(__SSID, "%s", cJSON_GetObjectItem(root, "ssid")->valuestring);
-        sprintf(__PWD, "%s", cJSON_GetObjectItem(root, "pwd")->valuestring);
-
-        ESP_LOGI(TAG, "pwd: %s", __PWD);
-        ESP_LOGI(TAG, "ssid: %s", __SSID);
-
-        remaining -= ret;
-    }
-
-    // End response
-    httpd_resp_send_chunk(req, NULL, 0);
-    return ESP_OK;
-}
-
-static const httpd_uri_t psw_ssid = {
-    .uri = "/connection",
-    .method = HTTP_POST,
-    .handler = psw_ssid_get_handler,
-    .user_ctx = "TEST"};
-
-static httpd_handle_t start_webserver(void)
-{
-    httpd_handle_t server = NULL;
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-
-    // Start the httpd server
-    ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
-    if (httpd_start(&server, &config) == ESP_OK)
-    {
-        // Set URI handlers
-        ESP_LOGI(TAG, "Registering URI handlers");
-        httpd_register_uri_handler(server, &servePage);
-        httpd_register_uri_handler(server, &psw_ssid);
-        return server;
-    }
-
-    ESP_LOGI(TAG, "Error starting server!");
-    return NULL;
-}
-
 void wifi_init_softap()
 {
 
@@ -241,5 +128,48 @@ void wifi_init_softap()
         ESP_ERROR_CHECK(esp_wifi_start());
     }
 
-    start_webserver();
+
+}
+// # Handle TCP socket connection
+int socket_tcp_connect(){
+    int s;
+    struct sockaddr_in tcpServerAddr;
+    tcpServerAddr.sin_addr.s_addr = inet_addr(TCP_SERVER_IP);
+    tcpServerAddr.sin_family = AF_INET;
+    tcpServerAddr.sin_port = htons( TCP_SERVER_PORT );
+    ESP_LOGI(TAG,"- TCP Connection started. \n");
+
+    xEventGroupWaitBits(wifi_event_group,CONNECTED_BIT,false,true,portMAX_DELAY);
+    // # Allocate socket
+    s = socket(AF_INET, SOCK_STREAM, 0);
+    if(s < 0) {
+        ESP_LOGE(TAG, " * Failed to allocate socket.\n");
+        return -1;
+    }
+    ESP_LOGI(TAG, " * Socket allocated\n");
+    if(connect(s, (struct sockaddr *)&tcpServerAddr, sizeof(tcpServerAddr)) != 0) {
+        ESP_LOGE(TAG, " * Socket connect failed errno=%d \n", errno);
+        close(s);
+        return -1;
+    }
+    ESP_LOGI(TAG, " * Connected! \n");
+
+    return s;
+}
+void socket_tcp_close_connection(int s){
+    close(s);
+    ESP_LOGI(TAG, " * Connection closed! \n");
+}
+// # Send data over TCP Socket
+uint16_t socket_tcp_send_data(int s, uint8_t data[], uint16_t data_size){
+    printf("Size of data : %d", data_size);
+    if(s >= 0){
+        if( write(s, data , data_size) < 0)
+        {
+            ESP_LOGE(TAG, " * Send failed \n");
+            return 0;
+        }
+        //ESP_LOGI(TAG, "... socket send success");
+        return 1; 
+    } else return 0;
 }

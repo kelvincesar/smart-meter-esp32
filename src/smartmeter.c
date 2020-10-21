@@ -1,6 +1,8 @@
 // Include used libraries
 #include "smartmeter.h"					// Smartmeter header
 
+// Global variable
+SmartMeter SM_data[32];
 
 static void adc_i2s_init(void)
 {
@@ -81,34 +83,61 @@ void signal_generator_task(void *parameters)
     }
 }
 
-void compute_goertzel(){
+void compute_goertzel(Buffer *buf){
+    u16_t i = 0;
+    u8_t freq_multiple = 1;             // Frequency multiple used to compute harmonics   
+    int16_t epsilon;   
+    float alpha, delta, main_freq;
 
     // - Goertzel
 	float dft[3][2] = {                 
-		{0, 59},                        // {amplitude, frequency}
-		{0, 60},                        // {amplitude, frequency}
-		{0, 61}                         // {amplitude, frequency}
+		{0, 59},                        // {amp, freq}
+		{0, 60},                        // {amp, freq}
+		{0, 61}                        // {amp, freq}
 	};
-    // Compute goertzel 
-	for (int i = 0; i < G_MAIN_FREQ_NUM; i++){
-		goertzel_handle = goertzel(&buf_voltage, &g_state, dft[i][1], buf_voltage.size);
+	float harmonics[2][2] = {                 
+		{0, 0},                        // {amp, freq} - 3rd
+		{0, 0}                        // {amp, freq} - 5th
+	};
+
+
+    // Compute goertzel for frequencies arround main frequency
+    for (i = 0; i < G_MAIN_FREQ_NUM; i++){
+        goertzel_handle = goertzel(&buf, &g_state, dft[i][1], ADC_SAMPLE_RATE);
         printf("g_state.DFT_m %f\n", g_state.DFT_m);
-		dft[i][0] = S_VOL_RATIO * g_state.DFT_m;
-	}
-	// Debug
-	printf("%f, %f\n", dft[0][0], dft[0][1]);
-	printf("%f, %f\n", dft[1][0], dft[1][1]);
-	printf("%f, %f\n", dft[2][0], dft[2][1]);
+        dft[i][0] = S_VOL_RATIO * g_state.DFT_m;
+    }
+    // Debug
+    printf("%f, %f\n", dft[0][0], dft[0][1]);
+    printf("%f, %f\n", dft[1][0], dft[1][1]);
+    printf("%f, %f\n", dft[2][0], dft[2][1]);
 
-	// Interpolation
-	int epsilon = (dft[2][0] >= dft[0][0]) ? 1 : -1;
-	printf("%d epsilon\n", epsilon);
-	float alpha = dft[1 + epsilon][0] / dft[1][0];
-	float delta =  (2*alpha - 1) / (alpha + 1);
+    // Interpolation
+    epsilon = (dft[2][0] >= dft[0][0]) ? 1 : -1;
+    
+    alpha = dft[1 + epsilon][0] / dft[1][0];
+    delta =  (2*alpha - 1) / (alpha + 1);
+    // Compute main frequency
+    main_freq = (60 + epsilon*delta);
+    printf("- Epsilon: %d \n", epsilon);
+    printf("- Main frequency: %f\n", main_freq);
 
-	float frequency = (60 + epsilon*delta);
+    // Calculate goertzel for 3rd and 5th hamornics
+    for (i = 0; i < G_NUM_OF_HARM; i++){
+        // Compute harmonic frequency based on main frequency multiple
+        harmonics[i][1] = (float) main_freq * freq_multiple;
 
-	printf("frequency: %f\n", frequency);
+        // Apply goertzel to the frequency found
+        goertzel_handle = goertzel(&buf, &g_state, harmonics[i][1], ADC_SAMPLE_RATE);
+        printf("g_state.DFT_m %f\n", g_state.DFT_m);
+        harmonics[i][0] = S_VOL_RATIO * g_state.DFT_m;
+
+        // Calculate frequency mutiple to next iteration
+        freq_multiple = freq_multiple+2;
+
+    }
+
+
 }
 
 void sample_read_task(void *parameters)
@@ -116,6 +145,8 @@ void sample_read_task(void *parameters)
     // # Define ADC Characteristics for convertion
     esp_adc_cal_characteristics_t cal;
     esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, ADC_V_REF, &cal);
+
+
 
     // # Declare I2S variables
     adc_sample_t buf[ADC_BUFFER_SIZE];  // Raw buffer with measures from ADC;  
@@ -127,7 +158,7 @@ void sample_read_task(void *parameters)
 
     u16_t current_ch_off = 0;           // Offset applied to get current measure from buffer
     u16_t voltage_ch_off = 0;           // Offset applied to get voltage measure from buffer
-    u16_t num_samples = 0;  
+
 
     // # Debug
 	int64_t start_time = 0;             // Start time tick [us]
@@ -141,15 +172,15 @@ void sample_read_task(void *parameters)
     //for (int k = 0; k < 1; ++k) {
         // Verify buffer size
         if(buf_voltage.size >= BUFFER_SIZE){
-            /*
+           /*
             // Debug
             for(uint16_t x = 0; x < buf_voltage.size ; x++){
                 printf("Buffer [%d] = %d\n", x, buf_voltage.data[x]);
                 //vTaskDelay(500 / portTICK_PERIOD_MS);
             }
-            */
+             */
             // # Apply goertzel:
-            start_time = esp_timer_get_time();      // Debug
+            start_time = esp_timer_get_time(&buf_voltage);      // Debug
             compute_goertzel();
             // Obtain current time
             end_time = esp_timer_get_time();
@@ -158,7 +189,7 @@ void sample_read_task(void *parameters)
             time_spent = (float)(end_time - start_time) / 1000000;
             printf("compute_goertzel execution time = %f us", time_spent);
             // Clean buffer
-            buffer_clean(&buf_voltage);
+            //buffer_clean(&buf_voltage);
             break;
         }
         // # Read data from i2s.
@@ -170,7 +201,7 @@ void sample_read_task(void *parameters)
         }
 
         measures_read /= sizeof(adc_sample_t);
-        num_samples = measures_read/2;          // 2 channels
+
 
         
 
@@ -210,6 +241,33 @@ void sample_read_task(void *parameters)
 
 
     }
+    // Debug
+    /*
+    int s = 0;
+    s = socket_tcp_connect();
+    if(s >= 0){
+        uint8_t* tcp_buffer;
+        tcp_buffer = (uint8_t*) calloc(8192, sizeof(uint8_t)); 
+
+        for(uint16_t x = 0; x < buf_voltage.size ; x++){
+            if(x % 2 == 0){
+                tcp_buffer[x] = buf_voltage.data[x] & 0xFF;
+            } else { 
+                tcp_buffer[x] = buf_voltage.data[x] >> 8; 
+            }
+
+            //printf("Buffer [%d] - %d (%d)\n", x, tcp_buffer[x], buf_voltage.data[x]);
+        }
+            //printf("Buffer [%d] = %d\n", x, buf_voltage.data[x]);
+        socket_tcp_send_data(s, tcp_buffer, 8192);
+        free(tcp_buffer); 
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+        
+    }
+    socket_tcp_close_connection(s);
+
+    buffer_clean(&buf_voltage);
+    */
     i2s_adc_disable(I2S_NUM);
     i2s_stop(I2S_NUM);
     vTaskDelete(NULL);
@@ -235,11 +293,11 @@ void app_main(void)
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
-
-
-
+    
     ESP_ERROR_CHECK(ret);
     //wifi_init_softap();
+
+
 
 
     // Local variables
