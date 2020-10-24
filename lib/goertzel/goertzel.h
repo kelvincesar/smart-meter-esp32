@@ -5,8 +5,8 @@
 #include <stdint.h>                         // C standard library
 #include <math.h>
 #include "buffer.h"
-
-#define PI_VALUE 3.14159265359
+//#include <stdio.h>
+#define PI_VALUE 3.141592653
 #define PI_2	 1.570796327
 
 
@@ -20,5 +20,5 @@ typedef struct {
 
 
 // Functions
-int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t sample_rate);
+int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t sample_rate, uint8_t config);
 #endif

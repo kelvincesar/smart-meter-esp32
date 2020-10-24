@@ -2,9 +2,9 @@
 #ifndef BUFFER_H
 #define BUFFER_H
 
-#include <stdint.h>                         // C standard library
+#include <stdint.h>                     // C standard library
 
-#define BUFFER_SIZE     4096            // Define buffer size for current and voltage
+#define BUFFER_SIZE     2048            // Define buffer size for current and voltage
 
 typedef struct {
     int16_t data[BUFFER_SIZE];

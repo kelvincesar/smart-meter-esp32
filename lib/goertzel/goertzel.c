@@ -13,24 +13,44 @@ float fast_sqrt(float x){
 }
 
 // # Compute goertzel algorithm for desired frequency
-int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t sample_rate){
+int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t sample_rate, uint8_t config){
     /*
-     * k = (int) [ 0.5 + ( samples*target_freq/sample_rate ) ]
-     * omega = (2*PI/samples) * k
-     * coeff = 2*cos(omega)
+		buf = buffer com as amostras;
+		goertz = variável onde será armazenado o estado calculado
+		target_freq = frequencia desejada
+		sample_rate = frequencia de amostragem do sinal
+		config = configuração do cálculo, onde:
+			- bit0 = habilita hanning window;
+			- bit1 = habilita cálculo completo da DFT
     */
 
+   	// # Declara variáveis;
+	uint16_t k;
+	uint8_t enable_hanning = config & 0x1;
+	uint8_t enable_full_dft = config > 0x1;
+	float w, c_real, c_img, coeff;
+	float hann_const = 1;
+	float scale_factor = buf->size / 4;
+
 	// # Calculate k constant
-	uint16_t k = (unsigned int) (0.5 + (buf->size*target_freq/sample_rate));
+	k = (unsigned int) (0.5 + (buf->size*target_freq/sample_rate));
 
 
 	// # Calculate omega
-	float w = (k * 2.0 * PI_VALUE) / (buf->size);	// Omega
+	w = (k * 2.0 * PI_VALUE) / (buf->size);	// Omega
 
 	// # Goertzel coeffiencts
-	float c_real = cosf(w);		// Real coeff
-	float c_img =  sinf(w);		// Img coeff
-	float coeff = 2 * c_real;	// Pre-compute coeff;
+	c_real = cosf(w);		// Real coeff
+	coeff = 2 * c_real;	// Pre-compute coeff;
+
+	// Verifica se o cálculo completo da DFT está ativo
+	if(enable_full_dft){ 
+		c_img =  sinf(w);		// Img coeff
+	}
+	// Cálcula a constante de Hanning para utilizar aplicar no sinal
+	if(enable_hanning){ 
+		hann_const =  2 * PI_VALUE / (buf->size - 1);		// Compute hanning constant
+	}
 
 
 	// # Init goertzel state variables;
@@ -40,27 +60,36 @@ int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t
 
 	// # Process samples
 	for (uint16_t n = 0; n < buf->size; n++){
-		y = buf->data[n] + coeff*y_1 - y_2;
+		if(enable_hanning)
+			y = (float) buf->data[n] * (0.5 - 0.5*cosf(hann_const*n));
+		else	
+			y = (float) buf->data[n];
+		y += coeff*y_1 - y_2;
 		y_2 = y_1;
 		y_1 = y;
 	}
 
 
+	if(enable_full_dft){ 
+		// # Calculate real, imaginary and amplitude
+		goertz->DFT_r = (y_1 - y_2 * c_real) / (scale_factor);
+		goertz->DFT_i = (y_2 * c_img)  / (scale_factor);
+		goertz->DFT_m = fast_sqrt(goertz->DFT_r*goertz->DFT_r + goertz->DFT_i*goertz->DFT_i);
 
-	// # Calculate real, imaginary and amplitude
-	goertz->DFT_r = (y_1 - y_2 * c_real) / (buf->size / 2);
-	goertz->DFT_i = (y_2 * c_img)  / (buf->size / 2);
-	goertz->DFT_m = fast_sqrt(goertz->DFT_r*goertz->DFT_r + goertz->DFT_i*goertz->DFT_i);
-
-	// # Calculate the angle <!>
-	if(goertz->DFT_r > 0) {
-		goertz->DFT_arg = atanf(goertz->DFT_i / goertz->DFT_r);
-	} else if(goertz->DFT_r < 0) {
-		goertz->DFT_arg = PI_VALUE + atanf(goertz->DFT_i/goertz->DFT_r);
-	} else if(goertz->DFT_r == 0 && goertz->DFT_i > 0) {
-		goertz->DFT_arg = PI_2;
-	} else if(goertz->DFT_r == 0 && goertz->DFT_i < 0) {
-		goertz->DFT_arg = -PI_2;
+		// # Calculate the angle <!>
+		if(goertz->DFT_r > 0) {
+			goertz->DFT_arg = atanf(goertz->DFT_i / goertz->DFT_r);
+		} else if(goertz->DFT_r < 0) {
+			goertz->DFT_arg = PI_VALUE + atanf(goertz->DFT_i/goertz->DFT_r);
+		} else if(goertz->DFT_r == 0 && goertz->DFT_i > 0) {
+			goertz->DFT_arg = PI_2;
+		} else if(goertz->DFT_r == 0 && goertz->DFT_i < 0) {
+			goertz->DFT_arg = -PI_2;
+		}
+	} else {
+		goertz->DFT_r = 0;
+		goertz->DFT_i = 0;
+		goertz->DFT_m = fast_sqrt(y_1*y_1 + y_2*y_2 - y_1*y_2*coeff) / scale_factor;
 	}
 
 	// # DEBUG
@@ -70,7 +99,7 @@ int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t
 	//printf("- k %d\n", k);
 	//printf("- Omega %f\n", w);
 	//printf("- c_real %f\n", c_real);
-	//printf("- c_img %f\n", c_img);
+	////printf("- c_img %f\n", c_img);
 	//printf("- y %f\n", y);
 	//printf("- y-1 %f\n", y_1);
 
