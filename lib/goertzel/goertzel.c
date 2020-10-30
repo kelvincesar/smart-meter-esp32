@@ -30,18 +30,18 @@ int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t
 	uint8_t enable_full_dft = config > 0x1;
 	float w, c_real, c_img, coeff;
 	float hann_const = 1;
-	float scale_factor = buf->size / 4;
+	float scale_factor = buf->size / 2;
 
 	// # Calculate k constant
-	k = (unsigned int) (0.5 + (buf->size*target_freq/sample_rate));
+	k = (unsigned int) floor((0.5 + (buf->size*target_freq/sample_rate)));
 
 
 	// # Calculate omega
-	w = (k * 2.0 * PI_VALUE) / (buf->size);	// Omega
+	w = (float) (k * 2.0 * M_PI) / (buf->size);	// Omega
 
 	// # Goertzel coeffiencts
 	c_real = cosf(w);		// Real coeff
-	coeff = 2 * c_real;	// Pre-compute coeff;
+	coeff = 2 * c_real;		// Pre-compute coeff;
 
 	// Verifica se o cálculo completo da DFT está ativo
 	if(enable_full_dft){ 
@@ -49,7 +49,8 @@ int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t
 	}
 	// Cálcula a constante de Hanning para utilizar aplicar no sinal
 	if(enable_hanning){ 
-		hann_const =  2 * PI_VALUE / (buf->size - 1);		// Compute hanning constant
+		hann_const =  2 * M_PI / (buf->size - 1);		// Compute hanning constant
+		//printf(" # Hanning window enabled");
 	}
 
 
@@ -61,7 +62,7 @@ int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t
 	// # Process samples
 	for (uint16_t n = 0; n < buf->size; n++){
 		if(enable_hanning)
-			y = (float) buf->data[n] * (0.5 - 0.5*cosf(hann_const*n));
+			y = (float) buf->data[n] * (1 - cosf(hann_const*n)) / 2;
 		else	
 			y = (float) buf->data[n];
 		y += coeff*y_1 - y_2;
@@ -72,7 +73,7 @@ int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t
 
 	if(enable_full_dft){ 
 		// # Calculate real, imaginary and amplitude
-		goertz->DFT_r = (y_1 - y_2 * c_real) / (scale_factor);
+		goertz->DFT_r = (y_1 * c_real - y_2) / (scale_factor);
 		goertz->DFT_i = (y_2 * c_img)  / (scale_factor);
 		goertz->DFT_m = fast_sqrt(goertz->DFT_r*goertz->DFT_r + goertz->DFT_i*goertz->DFT_i);
 
@@ -80,11 +81,11 @@ int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t
 		if(goertz->DFT_r > 0) {
 			goertz->DFT_arg = atanf(goertz->DFT_i / goertz->DFT_r);
 		} else if(goertz->DFT_r < 0) {
-			goertz->DFT_arg = PI_VALUE + atanf(goertz->DFT_i/goertz->DFT_r);
+			goertz->DFT_arg = M_PI + atanf(goertz->DFT_i/goertz->DFT_r);
 		} else if(goertz->DFT_r == 0 && goertz->DFT_i > 0) {
-			goertz->DFT_arg = PI_2;
+			goertz->DFT_arg = M_PI_2;
 		} else if(goertz->DFT_r == 0 && goertz->DFT_i < 0) {
-			goertz->DFT_arg = -PI_2;
+			goertz->DFT_arg = -M_PI_2;
 		}
 	} else {
 		goertz->DFT_r = 0;

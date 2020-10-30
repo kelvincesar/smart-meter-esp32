@@ -2,43 +2,45 @@
 #include "smartmeter.h"					// Smartmeter header
 
 // Global variable
-SmartMeter SM_data[32];
+
+SmartMeter sm_data;                     // Store smart meter main variables data;    
+
 
 static void adc_i2s_init(void)
 {
+
     static const i2s_config_t i2s_config = {
         .mode = I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_ADC_BUILT_IN,
         .sample_rate = ADC_SAMPLE_RATE*2,
         .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-        .communication_format = I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_LSB,
+        .communication_format = I2S_COMM_FORMAT_I2S_MSB,
         .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
-        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL3,
+        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
         .dma_buf_count = ADC_DMA_COUNT,
         .dma_buf_len = ADC_BUFFER_SIZE,
         .use_apll = false,
     };
     //install and start i2s driver
     i2s_driver_install(I2S_NUM, &i2s_config, 0, NULL);
-
+    // ADC-I2S Scanning does not normal start (more badly) after the reset of ESP32. 
+    // It is necessary to add a delay of 5 seconds before switching on the ADC for a reliable start, this is issue.
+    vTaskDelay(5000/portTICK_RATE_MS);
     //init ADC pad
     static const adc_i2s_pattern_t adc_i2s_pattern[] = {
         {
             .atten = ADC_ATTEN_DB_11,
             .bits = ADC_WIDTH_BIT_12,
-            .channel = ADC1_CHANNEL_6,
+            .channel = ADC1_CHANNEL_0,
         },
         {
             .atten = ADC_ATTEN_DB_11,
             .bits = ADC_WIDTH_BIT_12,
-            .channel = ADC1_CHANNEL_7
+            .channel = ADC1_CHANNEL_3
         }
     };
 
     i2s_set_adc_mode(ADC_UNIT_1, adc_i2s_pattern, sizeof(adc_i2s_pattern));
 
-
-    // Delay necessary or reliable start;
-    vTaskDelay(1000/portTICK_RATE_MS);
 }
 // # ----------------------------------------------
 // # SIGNAL GENERATOR 
@@ -84,12 +86,20 @@ void signal_generator_task(void *parameters)
 }
 
 void compute_goertzel(Buffer *buf){
+    // Debug
+	int64_t start_time = 0;             // Start time tick [us]
+	int64_t end_time = 0;               // End time tick [us]
+	float time_spent = 0;	            // Time spent in the execution [s]
+    start_time = esp_timer_get_time();      // Debug
+
+
+
     u16_t i = 0;
     //u8_t freq_multiple = 1;             // Frequency multiple used to compute harmonics   
     u8_t epsilon;   
     float delta, delta_pi, main_freq, main_amp;
 
-    // - Goertzel
+    // Frequecies and amplitudes around 60 Hz where Goertzel algorithm will be applied.
 	float dft[5][2] = {      
 		{0, 50},                        // {amp, freq}           
 		{0, 55},                        // {amp, freq}
@@ -127,10 +137,10 @@ void compute_goertzel(Buffer *buf){
     if(k > 0){
         epsilon = (dft[k+1][0] >= dft[k-1][0]) ? 1 : -1;
         delta = epsilon * (2 * dft[k+epsilon][0] - dft[k][0]) / (dft[k][0] + dft[k+epsilon][0]);
-        k_m = (u16_t) (0.5 + (buf->size * dft[k][1] / ADC_SAMPLE_RATE));
+        k_m = (u16_t) floor((0.5 + (buf->size * dft[k][1] / ADC_SAMPLE_RATE)));
 
         main_freq = (k_m + delta)* (1 / SAMPLING_WINDOW_TIME);
-        delta_pi = PI_VALUE * delta;
+        delta_pi = M_PI * delta;
         main_amp = fabs (dft[k][0]);
        
         main_amp *= fabs ( (float) (delta_pi) / (float) sinf(delta_pi));
@@ -138,7 +148,7 @@ void compute_goertzel(Buffer *buf){
         main_amp *= fabs ( (float) (delta*delta - 1));
     
         // Debug
-        printf("Maior amplitude = %f, k = %d\n", dft[k][0], k);
+        printf("\nMaior amplitude = %f, k = %d\n", dft[k][0], k);
         printf("- Epsilon: %d \n", epsilon);
         printf("- delta: %f \n", delta);
         printf("- k_m: %d \n", k_m);
@@ -147,7 +157,12 @@ void compute_goertzel(Buffer *buf){
         printf("- Main amplitude: %f\n", main_amp);
     }
     
+    // Obtain current time
+    end_time = esp_timer_get_time();
 
+    // Calculating time spent
+    time_spent = (float)(end_time - start_time) / 1000000;
+    printf("compute_goertzel execution time = %f us\n", time_spent);
 
     /*
     // Calculate goertzel for 3rd and 5th hamornics
@@ -158,7 +173,7 @@ void compute_goertzel(Buffer *buf){
         // Apply goertzel to the frequency found
         goertzel_handle = goertzel(&buf, &g_state, harmonics[i][1], ADC_SAMPLE_RATE);
         printf("g_state.DFT_m %f\n", g_state.DFT_m);
-        harmonics[i][0] = S_VOL_RATIO * g_state.DFT_m;
+        harmonics[i][0] = SENS_VOLT_RATIO * g_state.DFT_m;
 
         // Calculate frequency mutiple to next iteration
         freq_multiple = freq_multiple+2;
@@ -166,6 +181,51 @@ void compute_goertzel(Buffer *buf){
     }
     */
 
+}
+// Compute rms and remove dc offset
+void do_rms(Buffer *voltage, Buffer *current){
+    u32_t sum_voltage = 0;
+    u32_t sum_current = 0;
+
+    // # Calcula o valor de offset do sinal
+    u16_t voltage_offset = (voltage->max + voltage->min) / 2;
+    u16_t current_offset = (current->max + current->min) / 2;
+    
+    // Remove o offset do sinal e computa o somatório da sua potência
+    for (u16_t i = 0; i < BUFFER_SIZE; i++){
+        // Atualiza o valor do buffer removendo o offset
+        voltage->data[i] -= voltage_offset;
+        current->data[i] -= current_offset;
+        // Remove o offset do valor de tensão e atualiza no buffer
+        sum_voltage += (uint32_t) (voltage->data[i]*voltage->data[i]);
+        sum_current += (uint32_t) (current->data[i]*current->data[i]);
+    }
+    // Cálculo do RMS
+    sm_data.v_rms = fast_sqrt(sum_voltage / BUFFER_SIZE);
+    sm_data.i_rms = fast_sqrt(sum_current / BUFFER_SIZE);
+
+    // # Debug
+    printf("==================\n");
+    printf("v_rms = %f\n", sm_data.v_rms );
+    printf("i_rms = %f\n", sm_data.i_rms );
+    printf("voltage_offset = %d\n", voltage_offset );
+    printf("current_offset = %d\n", current_offset );
+    printf("==================\n");
+}
+
+
+// # Verify buffers state
+bool buffers_verify(){
+    return (buf_voltage.size >= BUFFER_SIZE || buf_current.size >= BUFFER_SIZE || buffer_handle == -1) ? true : false;
+}
+
+
+/*
+    Apply linear equation to convert binary to mV
+    y = 0.8165x + 143.21
+*/ 
+uint16_t convert_to_voltage(uint16_t value){
+    return (float) (value * 0.8165 + 143.21);
 }
 
 void sample_read_task(void *parameters)
@@ -181,104 +241,79 @@ void sample_read_task(void *parameters)
     size_t measures_read;               // Receive number of measures read from I2S - ADC
     
     // # Declare local variables
-    int16_t voltage_converted = 0;      // Voltage read;
-    int16_t current_converted = 0;      // Current read;
+    u16_t sample = 0;                   // Generic variable to momently store sample value converted to mV
+    u16_t loop_ctrl = 0;                // Used to control while loop
 
-
-
-    // # Debug
-	int64_t start_time = 0;             // Start time tick [us]
-	int64_t end_time = 0;               // End time tick [us]
-	float time_spent = 0;	            // Time spent in the execution [s]
-    int16_t max_value = 0;
     // # Start ADC I2S Setup
     ESP_LOGI(TAG_SM, "# Starting ADC configuration");
     adc_i2s_init();
-     ESP_LOGI(TAG_SM, "# ADC setup successfuly");
+    ESP_LOGI(TAG_SM, "# ADC setup successfuly");
+    buffer_clean(&buf_current);
+    buffer_clean(&buf_voltage);
+    ESP_LOGI(TAG_SM, "# Buffers cleaned");
 
-    while (true) {
-    //for (int k = 0; k < 1; ++k) {
-        // Verify buffer size
-        if(buf_voltage.size >= BUFFER_SIZE){
-           
-            // Debug
-            /*
-            for(uint16_t x = 0; x < buf_voltage.size ; x++){
-                printf("Buffer [%d] = %d\n", x, buf_voltage.data[x]);
-                if((x == 512) || (x == 1024) || (x == 1573)){ 
-                    vTaskDelay(10000 / portTICK_PERIOD_MS);
-                }
-            }
-            */
-            // # Apply goertzel:
-            start_time = esp_timer_get_time();      // Debug
-            printf(" - max_value = %d", max_value);
-            compute_goertzel(&buf_voltage);
-            // Obtain current time
-            end_time = esp_timer_get_time();
-
-            // Calculating time spent
-            time_spent = (float)(end_time - start_time) / 1000000;
-            printf("compute_goertzel execution time = %f us", time_spent);
-            // Clean buffer
-            //buffer_clean(&buf_voltage);
-            break;
-        }
-        // # Read data from i2s.
-        
+    while (loop_ctrl == 0) {
+        // # Read data from i2s.      
         esp_err_t err = i2s_read(I2S_NUM, buf, sizeof(buf), &measures_read, portMAX_DELAY);
 
         if (err != ESP_OK)
         {
             printf("i2s_read: %d\n", err);
+
         }
+        // # Compute vector size
+        measures_read /= sizeof(adc_sample_t);  
 
-        measures_read /= sizeof(adc_sample_t);
-
-        
-        
-
-
-
-        // Loop on measures to convert and save on buffer
+        // # Loop on measures to convert and save on buffer
         for (u16_t i = 0; i < measures_read; i ++)
         {
             // Get channels offset on buffer
             switch (buf[i] >> 12){
                 case ADC_CURRENT_CHANNEL:
-                    current_converted = esp_adc_cal_raw_to_voltage(ADC_GET_MEASURE(buf[i]), &cal) - ADC_V_REF / 2;
-                    buffer_handle = buffer_push(&buf_current, current_converted);
-                    
+                    // Realiza a conversão da amostra para tensão de acordo com calibração
+                    sample = convert_to_voltage(ADC_GET_MEASURE(buf[i]));
+
+                    // Salva no buffer de tensão
+                    buffer_handle = buffer_push(&buf_current, sample);
                     break;
                 case ADC_VOLTAGE_CHANNEL:
-                    
-                    //voltage_converted = esp_adc_cal_raw_to_voltage(ADC_GET_MEASURE(buf[i]), &cal) - ADC_V_REF / 2;  //               
-                    voltage_converted = ADC_GET_MEASURE(buf[i]) - ADC_SIGNAL_OFFSET;
-                    buffer_handle = buffer_push(&buf_voltage, voltage_converted);
-                    //if(voltage_converted > max_value) max_value = voltage_converted;
+                    // Realiza a conversão da amostra para tensão de acordo com calibração
+                    sample = convert_to_voltage(ADC_GET_MEASURE(buf[i]));
 
-                   //printf("%d\n", buf_voltage.size);
+                    // Salva no buffer de tensão
+                    buffer_handle = buffer_push(&buf_voltage, sample);
                     break; 
-
                 default:
                     ESP_LOGE(TAG_SM, "# Unknown channel %d", buf[0]>>12);
 
             }
-                   
-            
-
-            
-            // Insert data into buffers
-            
-            
-
-           //sum_voltage += (uint32_t) (voltage_converted*voltage_converted);
-           //sum_current += (uint32_t) (current_converted*current_converted);
-           //sum_active_power += (uint32_t) (voltage_converted*current_converted);
         }
+        if(buf_voltage.size != buf_current.size){
+            ESP_LOGE(TAG_SM, "# Voltage buffer and current doesn't have the same size [%d/%d]", buf_voltage.size, buf_current.size);
+        } else {
+
+            // Verifica se os buffers chegaram ao limite
+            if(buffers_verify()){
+                // # Compute RMS and remove DC offset from signals;
+                do_rms(&buf_voltage, &buf_current);
+                // # Apply goertzel to voltage signal
+                compute_goertzel(&buf_voltage);
 
 
+                for(uint16_t x = 0; x < buf_voltage.size ; x++){
+                    printf("%u,%d;", x, buf_voltage.data[x]);
+                }
+                printf("\n\n");
+                buffer_clean(&buf_voltage);
+                // # Apply goertzel to current signal
+                compute_goertzel(&buf_current);
+                buffer_clean(&buf_current);
 
+                // # Debug 
+                loop_ctrl = 1;
+            }
+        }
+            
 
     }
     // Debug
@@ -305,9 +340,8 @@ void sample_read_task(void *parameters)
         
     }
     socket_tcp_close_connection(s);
-
-    buffer_clean(&buf_voltage);
     */
+
     i2s_adc_disable(I2S_NUM);
     i2s_stop(I2S_NUM);
     vTaskDelete(NULL);
@@ -317,26 +351,8 @@ void sample_read_task(void *parameters)
 void app_main(void)
 {
 
-    //set RGB PINs
-    //gpio_pad_select_gpio(LED_R);
-    //gpio_pad_select_gpio(LED_G);
-    //gpio_pad_select_gpio(LED_B);
-//
-    //gpio_set_direction(LED_R, GPIO_MODE_OUTPUT);
-    //gpio_set_direction(LED_G, GPIO_MODE_OUTPUT);
-    //gpio_set_direction(LED_B, GPIO_MODE_OUTPUT);
 
-    esp_err_t ret = nvs_flash_init();
-
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
-    {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    
-    ESP_ERROR_CHECK(ret);
-    //wifi_init_softap();
-
+    //setup_wifi();
 
 
 
@@ -345,7 +361,7 @@ void app_main(void)
 	// Print info to show main task is running
 	ESP_LOGI(TAG_SM, "# Running app_main in core %d", xPortGetCoreID());
 
-    /*
+    /**/
     // Log task creation
 	ESP_LOGI(TAG_SM, "# Creating signal_generator task");
 
@@ -362,8 +378,8 @@ void app_main(void)
     // Check task creation error
 	if (task_create_ret != pdPASS){ ESP_LOGE(TAG_SM, "Error creating signal_generator task"); }
 	// Delay 
-	vTaskDelay(1000 / portTICK_PERIOD_MS);
-    */
+	vTaskDelay(10000 / portTICK_PERIOD_MS);
+    
     // Log task creation
 	ESP_LOGI(TAG_SM, "# Creating sample_read_task");
 
@@ -372,7 +388,7 @@ void app_main(void)
 	task_create_ret = xTaskCreatePinnedToCore(
 		sample_read_task,					// Function executed in the task
 		"SRT",					            // Task name (for debug)
-		24000,								// Stack size in bytes
+		32000,								// Stack size in bytes
 		NULL,								// Parameter to pass to the function
 		1,									// Task priority
 		&sample_read_task_handle,			// Used to pass back a handle by which the created task can be referenced

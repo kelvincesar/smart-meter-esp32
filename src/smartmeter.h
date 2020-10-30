@@ -35,8 +35,8 @@
 #include "soc/syscon_struct.h"
 
 // Application lib files
-#include "wifi.h"                           // Wi-fi functions
-#include "buffer.h"                         // Buffer library
+#include "wireless.h"                           // Wi-fi functions
+#include "data_buffers.h"                     // Data buffers library
 #include "goertzel.h"                       // Goertzel library
 
 // Signal generator library
@@ -49,35 +49,39 @@
 
 // ## DEFINES ##
 // # Current sensor configuration:
-#define S_AMP_RATIO         1                               // Current sensor ratio;
-#define ADC_CURRENT_CHANNEL 6                               // Define channel used to measure current
+#define SENS_CURR_RATIO         (1)                           // Current sensor ratio;
+#define ADC_CURRENT_CHANNEL     (0)                           // Define channel used to measure current
 // # Voltage sensor configuration:
-#define S_VOL_RATIO         0.1884                         // Voltage sensor ratio; 3.3/4095 * (2/3.3)*311
-#define ADC_VOLTAGE_CHANNEL 7                               // Define channel used to measure voltage
+#define SENS_VOLT_RATIO         (0.1884)                      // Voltage sensor ratio; 3.3/4095 * (2/3.3)*311
+#define SENS_DC_OFFSET          ((2450 - 180) / 2)          // Voltage sensor DC offset value in [mV]
+#define ADC_VOLTAGE_CHANNEL     (3)                           // Define channel used to measure voltage
 
 
 // # ADC configuration:
-#define MAIN_FREQ           60                              // Main signal frequency in Hz;
-#define I2S_NUM 0                                           // I2S drive number;
-#define ADC_NUM_OF_CH 2                                     // Number of channels that are read;
-#define ADC_SAMPLE_RATE     10240                           // Sampling rate in Hz
-#define ADC_BUFFER_SIZE     1024                            // I2S Buffer size (limit: 1024)
+#define MAIN_FREQ               (60)                          // Main signal frequency in Hz;
+#define I2S_NUM                 (0)                     // I2S drive number;
+#define ADC_NUM_OF_CH           (2)                                 // Number of channels that are read;
+#define ADC_SAMPLE_RATE         (10240)                       // Sampling rate in Hz
+#define ADC_BUFFER_SIZE         (1024)                        // I2S Buffer size (limit: 1024)
 
-#define ADC_DMA_COUNT       32                              // Number of DMA buffers
+#define ADC_DMA_COUNT           (24)                          // Number of DMA buffers
 
 
-#define ADC_V_REF           3300                            // ADC Voltage reference in mV;
-#define ADC_RESOLUTION      4096                            // ADC resolution
-#define ADC_SIGNAL_IS_AC    true                            // Define that signal read is AC;
-#define ADC_SIGNAL_OFFSET   2048                            // Define offset for AC signal;
-#define ADC_GET_MEASURE(s)  (s & 0xFFF) // Macro used to get 12 bit part from adc read;
-#define SAMPLING_WINDOW_TIME 0.2                            // Define the sampling window time from signal
+#define ADC_V_REF               (3300)                        // ADC Voltage reference in mV;
+#define ADC_RESOLUTION          (4096)                        // ADC resolution
+#define ADC_SIGNAL_IS_AC        true                        // Define that signal read is AC;
+
+#define ADC_GET_MEASURE(s)      (s & 0xFFF)                 // Macro used to get 12 bit part from adc read;
+
+
+
+#define SAMPLING_WINDOW_TIME    (0.2)                         // Define the sampling window time from signal
 // # Signal generator:
-#define SIN_WAVE_NUM        255                             // Number of samples per period  
+#define SIN_WAVE_NUM        (255)                             // Number of samples per period  
 
 // # Goertzel
-#define G_MAIN_FREQ_NUM     5                               // Number of frequencies to use on interpolation
-#define G_NUM_OF_HARM       2                               // Define the number of harmonics
+#define G_MAIN_FREQ_NUM     (5)                               // Number of frequencies to use on interpolation
+#define G_NUM_OF_HARM       (2)                               // Define the number of harmonics
 
 
 #define ENABLE_DEBUG                                        // Enable debug mode
@@ -99,19 +103,7 @@ int16_t buffer_handle = 0;
 GoertzelState g_state;
 int16_t goertzel_handle = 0;
 
-// Main data structure
-typedef struct {
-	float v_rms;
-	float i_rms;
-	float aparrent_power;
-	float active_power;
-    float reactive_power;
-    float frequency;
-    float fp;
-    float THD_V;
-    float THD_I;
-    uint16_t pointer;
-} SmartMeter;
+
 
 
 
@@ -134,6 +126,10 @@ void signal_generator_task(void *parameters);
 
 // Function to compute goertzel on signal read;
 void compute_goertzel();
+
+// Function to convert adc read binary data to mV
+uint16_t convert_to_voltage(uint16_t value);
+
 
 // End of the inclusion guard
 #endif

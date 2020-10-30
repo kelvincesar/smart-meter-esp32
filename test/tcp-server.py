@@ -3,7 +3,7 @@ import socket
 import struct
 s = socket.socket()         
  
-s.bind(('192.168.43.129', 8090 ))
+s.bind(('192.168.137.1', 8090 ))
 s.listen(0)                 
 print("Starting server")
 while True:
@@ -15,7 +15,7 @@ while True:
         if len(content) > 0:
             try:
                 data_struct = struct.Struct('>8192B')
-                read_recover = list(data_struct.unpack(received))
+                read_recover = list(data_struct.unpack(data_struct))
 
                 for x in read_recover:
                     print(x)
