@@ -38,6 +38,7 @@
 #include "wireless.h"                           // Wi-fi functions
 #include "data_buffers.h"                     // Data buffers library
 #include "goertzel.h"                       // Goertzel library
+#include "moving_avg.h"                 // Moving average algo
 
 // Signal generator library
 #include <driver/dac.h>
@@ -81,11 +82,19 @@
 
 // # Goertzel
 #define G_MAIN_FREQ_NUM     (5)                               // Number of frequencies to use on interpolation
-#define G_NUM_OF_HARM       (2)                               // Define the number of harmonics
+
+// # Harmonics matrix
+#define H_AMP               (0)
+#define H_FREQ              (1)
+#define H_PHASE             (2)
+#define H_RMS               (3)
+
+
 
 
 #define ENABLE_DEBUG                                        // Enable debug mode
 
+#define ARRAY_LEN(arr) ((int) (sizeof (arr) / sizeof (arr)[0]))   // Macro to compute array size
 
 // Define uint to adc sample
 typedef uint16_t adc_sample_t;
@@ -95,15 +104,22 @@ typedef uint16_t adc_sample_t;
 // #-------------------------------------
 
 // Buffer variables
-Buffer buf_voltage;
-Buffer buf_current;
+Buffer buf_voltage = {.size = 0, .max = 0, .min = 65535};
+Buffer buf_current = {.size = 0, .max = 0, .min = 65535};
 int16_t buffer_handle = 0;
 
 // Goertzel variables
 GoertzelState g_state;
-int16_t goertzel_handle = 0;
 
 
+uint8_t goertzel_handle = 0;
+uint8_t ipdft_handle = 0;
+// # Struct to hold ipdft returns
+typedef struct {
+	float frequency;
+    float amplitude;
+    float phase_ang;
+} IpDFT;
 
 
 
@@ -124,12 +140,12 @@ void sample_read_task(void *parameters);
 // Task to simulate signal
 void signal_generator_task(void *parameters);
 
-// Function to compute goertzel on signal read;
-void compute_goertzel();
+// Function to compute Ip DFT 
+uint8_t do_ipdft(Buffer *buf, IpDFT *ipdft);
 
 // Function to convert adc read binary data to mV
 uint16_t convert_to_voltage(uint16_t value);
-
+void show_sm_values();
 
 // End of the inclusion guard
 #endif

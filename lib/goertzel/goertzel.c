@@ -13,7 +13,7 @@ float fast_sqrt(float x){
 }
 
 // # Compute goertzel algorithm for desired frequency
-int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t sample_rate, uint8_t config){
+uint8_t goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t sample_rate, uint8_t config){
     /*
 		buf = buffer com as amostras;
 		goertz = variável onde será armazenado o estado calculado
@@ -30,7 +30,7 @@ int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t
 	uint8_t enable_full_dft = config > 0x1;
 	float w, c_real, c_img, coeff;
 	float hann_const = 1;
-	float scale_factor = buf->size / 2;
+	float scale_factor = buf->size / 4;
 
 	// # Calculate k constant
 	k = (unsigned int) floor((0.5 + (buf->size*target_freq/sample_rate)));
@@ -49,7 +49,7 @@ int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t
 	}
 	// Cálcula a constante de Hanning para utilizar aplicar no sinal
 	if(enable_hanning){ 
-		hann_const =  2 * M_PI / (buf->size - 1);		// Compute hanning constant
+		hann_const =  2 * M_PI / ((buf->size-1)/2);		// Compute hanning constant
 		//printf(" # Hanning window enabled");
 	}
 
@@ -91,6 +91,7 @@ int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t
 		goertz->DFT_r = 0;
 		goertz->DFT_i = 0;
 		goertz->DFT_m = fast_sqrt(y_1*y_1 + y_2*y_2 - y_1*y_2*coeff) / scale_factor;
+		goertz->DFT_arg = 0;
 	}
 
 	// # DEBUG

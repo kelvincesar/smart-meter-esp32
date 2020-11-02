@@ -18,13 +18,20 @@ typedef struct {
 typedef struct {
 	float v_rms;
 	float i_rms;
-	float aparrent_power;
+	float aparent_power;
 	float active_power;
     float reactive_power;
     float frequency;
+    float voltage_amp;
+    float voltage_freq;
+    float voltage_phase;
+    float current_amp;
+    float current_phase;
+    float current_freq;
     float fp;
     float THD_V;
     float THD_I;
+    float THD_P;
     uint32_t timestamp;
 } SmartMeter;
 

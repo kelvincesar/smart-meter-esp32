@@ -9,7 +9,7 @@ int sm_push (SmartMeter *data){
     // Store data into timeseries data block
     sm_ts.data[pt].v_rms = data->v_rms;
 	sm_ts.data[pt].i_rms = data->i_rms;
-	sm_ts.data[pt].aparrent_power = data->aparrent_power;
+	sm_ts.data[pt].aparent_power = data->aparent_power;
 	sm_ts.data[pt].active_power = data->active_power;
     sm_ts.data[pt].reactive_power = data->reactive_power;
     sm_ts.data[pt].frequency = data->frequency;
@@ -59,7 +59,7 @@ void buffer_clean (Buffer *buf){
     }
     buf->size = 0;
     buf->max = 0;
-    buf->min = 0;
+    buf->min = 65535;
 }
 int is_buffer_full(Buffer *buf){
     // Verify if buffer size is not full

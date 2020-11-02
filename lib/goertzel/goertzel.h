@@ -5,6 +5,7 @@
 #include <stdint.h>                         // C standard library
 #include <math.h>
 #include "data_buffers.h"
+
 //#include <stdio.h>
 #define PI_VALUE 3.141592653
 #define PI_2	 1.570796327
@@ -20,6 +21,6 @@ typedef struct {
 
 
 // Functions
-int goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t sample_rate, uint8_t config);
+uint8_t goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint16_t sample_rate, uint8_t config);
 float fast_sqrt(float x);
 #endif
