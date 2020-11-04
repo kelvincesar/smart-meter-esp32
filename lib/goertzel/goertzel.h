@@ -5,7 +5,7 @@
 #include <stdint.h>                         // C standard library
 #include <math.h>
 #include "data_buffers.h"
-
+#include <stdio.h>                          // C standard library
 //#include <stdio.h>
 #define PI_VALUE 3.141592653
 #define PI_2	 1.570796327

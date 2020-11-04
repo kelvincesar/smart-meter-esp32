@@ -28,7 +28,7 @@ uint8_t goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint
 	uint16_t k;
 	uint8_t enable_hanning = config & 0x1;
 	uint8_t enable_full_dft = config > 0x1;
-	float w, c_real, c_img, coeff;
+	float w, c_real = 0, c_img = 0, coeff = 0;
 	float hann_const = 1;
 	float scale_factor = buf->size / 4;
 
@@ -49,16 +49,16 @@ uint8_t goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint
 	}
 	// Cálcula a constante de Hanning para utilizar aplicar no sinal
 	if(enable_hanning){ 
-		hann_const =  2 * M_PI / ((buf->size-1)/2);		// Compute hanning constant
-		//printf(" # Hanning window enabled");
-	}
+		hann_const =  2 * M_PI / (buf->size-1);		// Compute hanning constant
+		printf(" # Hanning window enabled");
+	} 
 
 
 	// # Init goertzel state variables;
 	float y = 0;
 	float y_1 = 0;
 	float y_2 = 0;
-
+	
 	// # Process samples
 	for (uint16_t n = 0; n < buf->size; n++){
 		if(enable_hanning)
@@ -73,9 +73,9 @@ uint8_t goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint
 
 	if(enable_full_dft){ 
 		// # Calculate real, imaginary and amplitude
-		goertz->DFT_r = (y_1 * c_real - y_2) / (scale_factor);
-		goertz->DFT_i = (y_2 * c_img)  / (scale_factor);
-		goertz->DFT_m = fast_sqrt(goertz->DFT_r*goertz->DFT_r + goertz->DFT_i*goertz->DFT_i);
+		goertz->DFT_r = (y_1 * c_real - y_2);
+		goertz->DFT_i = (y_1 * c_img);
+		goertz->DFT_m = fast_sqrt(goertz->DFT_r*goertz->DFT_r + goertz->DFT_i*goertz->DFT_i)  / (scale_factor);
 
 		// # Calculate the angle <!>
 		if(goertz->DFT_r > 0) {
@@ -101,9 +101,13 @@ uint8_t goertzel (Buffer *buf, GoertzelState *goertz, uint16_t target_freq, uint
 	//printf("- k %d\n", k);
 	//printf("- Omega %f\n", w);
 	//printf("- c_real %f\n", c_real);
-	////printf("- c_img %f\n", c_img);
+	//printf("- c_img %f\n", c_img);
 	//printf("- y %f\n", y);
 	//printf("- y-1 %f\n", y_1);
+	printf(" - DFT_r: %f\n", goertz->DFT_r);
+	printf(" - DFT_i: %f\n", goertz->DFT_i);
+	printf(" - DFT_m: %f\n", goertz->DFT_m);
+	printf(" - DFT_arg: %f\n\n", goertz->DFT_arg);
 
 	return 1;
 }

@@ -24,16 +24,6 @@ int sm_push (SmartMeter *data){
     }
     return 1;
 }
-	
-	
-	
-	
-    
-    
-    
-    
-    
-
 
 
 // Function used to insert data into buffer and contabilize it size;
@@ -47,7 +37,7 @@ int buffer_push (Buffer *buf, int16_t value){
     // Compute max and min values
     buf->max = (value > buf->max ) ? value : buf->max;
     buf->min = (value < buf->min ) ? value : buf->min;
-
+    buf->sum += value;
     buf->size++;
 
 
@@ -57,6 +47,7 @@ void buffer_clean (Buffer *buf){
     for (uint16_t i = 0; i < buf->size ; i++){
         buf->data[i] = 0;
     }
+    buf->sum = 0;
     buf->size = 0;
     buf->max = 0;
     buf->min = 65535;

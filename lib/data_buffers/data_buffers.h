@@ -12,6 +12,7 @@ typedef struct {
     uint16_t size;                  // Store array size
     uint16_t max;                   // Store max value in array
     uint16_t min;                   // Store min value in array
+    uint32_t sum;                   // Store sum of values in array
 } Buffer;
 
 // # Smart Meter main data block struct
