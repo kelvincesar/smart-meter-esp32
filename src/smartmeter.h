@@ -92,7 +92,7 @@
 
 
 
-#define ENABLE_DEBUG                                        // Enable debug mode
+#define DEBUG_EN            (true)                                        // Enable debug mode
 
 #define ARRAY_LEN(arr) ((int) (sizeof (arr) / sizeof (arr)[0]))   // Macro to compute array size
 
@@ -104,8 +104,8 @@ typedef uint16_t adc_sample_t;
 // #-------------------------------------
 
 // Buffer variables
-Buffer buf_voltage = {.size = 0, .max = 0, .min = 65535};
-Buffer buf_current = {.size = 0, .max = 0, .min = 65535};
+Buffer buf_voltage = {.size = 0, .sum = 0};
+Buffer buf_current = {.size = 0, .sum = 0};
 int16_t buffer_handle = 0;
 
 // Goertzel variables
@@ -141,7 +141,7 @@ void sample_read_task(void *parameters);
 void signal_generator_task(void *parameters);
 
 // Function to compute Ip DFT 
-uint8_t do_ipdft(Buffer *buf, IpDFT *ipdft);
+uint8_t do_ipdft(Buffer *buf, IpDFT *ipdft, u16_t harmonic_index);
 
 // Function to convert adc read binary data to mV
 uint16_t convert_to_voltage(uint16_t value);

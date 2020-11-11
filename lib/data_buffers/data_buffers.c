@@ -34,9 +34,6 @@ int buffer_push (Buffer *buf, int16_t value){
     }
     // Insert data into buffer and increment it counter
     buf->data[buf->size] = value;
-    // Compute max and min values
-    buf->max = (value > buf->max ) ? value : buf->max;
-    buf->min = (value < buf->min ) ? value : buf->min;
     buf->sum += value;
     buf->size++;
 
@@ -49,8 +46,6 @@ void buffer_clean (Buffer *buf){
     }
     buf->sum = 0;
     buf->size = 0;
-    buf->max = 0;
-    buf->min = 65535;
 }
 int is_buffer_full(Buffer *buf){
     // Verify if buffer size is not full

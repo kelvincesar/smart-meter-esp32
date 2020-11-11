@@ -10,8 +10,6 @@
 typedef struct {
     int16_t data[BUFFER_SIZE];      // Array to store values
     uint16_t size;                  // Store array size
-    uint16_t max;                   // Store max value in array
-    uint16_t min;                   // Store min value in array
     uint32_t sum;                   // Store sum of values in array
 } Buffer;
 

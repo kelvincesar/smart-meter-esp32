@@ -9,7 +9,7 @@
 //#include <stdio.h>
 #define PI_VALUE 3.141592653
 #define PI_2	 1.570796327
-
+#define GOERTZEL_DEBUG_EN            (false)
 
 // Structure with values from goertzel algorithm;
 typedef struct {

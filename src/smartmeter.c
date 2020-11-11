@@ -93,12 +93,13 @@ uint8_t do_thd(){
 
     u16_t i = 0;
     // Config to compute applying complete Goertzel calculus;
-    u8_t gtz_config = 0x2;        
+    //u8_t gtz_config = 0x3;        
     
     
     float delta_phi = 0;
     float main_active_power = 0;
     float main_cosphi = 0;
+    float power_aux = 0;
 
     float harm_active_power = 0;
     float aux_thd_i_v  =   0;           // Store Sqrt(1 - THD_v^2)*Sqrt(1 - THD_i^2)
@@ -126,7 +127,7 @@ uint8_t do_thd(){
     float i_main_rms = (float) (i_harm_data[0][H_AMP] / M_SQRT2);
 
     // # Compute values for the main frequency
-    delta_phi = (float) (v_harm_data[0][H_PHASE] - i_harm_data[0][H_PHASE]);
+    delta_phi = (float) fabs(v_harm_data[0][H_PHASE] - i_harm_data[0][H_PHASE]);
     main_cosphi = cosf(delta_phi);
 
     sm_data.active_power   = (float) (v_main_rms * i_main_rms * main_cosphi);
@@ -141,39 +142,71 @@ uint8_t do_thd(){
 
     // # Compute harmonics amplitude and phase using Goertzel.
     // Start from i=1 because first position stores main signal values.
-    for (i = 1; i < ARRAY_LEN(v_harm_data) - 1; i++){
-        printf("- Harmonic number [%d] \n", i+1);
+    for (i = 1; i < ARRAY_LEN(v_harm_data); i++){
+        //printf("\n- Harmonic number [%d] \n", i+1);
         // # Compute harmonic frequency
-        v_harm_data[i][H_FREQ] = (float) (v_harm_data[0][H_FREQ] * (i+1));
-        i_harm_data[i][H_FREQ] = (float) (i_harm_data[0][H_FREQ] * (i+1));
+        //v_harm_data[i][H_FREQ] = (float) (v_harm_data[0][H_FREQ] * (i+1));
+        //i_harm_data[i][H_FREQ] = (float) (i_harm_data[0][H_FREQ] * (i+1));
 
         // # Apply goertzel to current and voltage harmonic frequency
-        goertzel_handle = goertzel(&buf_voltage, &g_state, v_harm_data[i][H_FREQ], ADC_SAMPLE_RATE, gtz_config);
-        v_harm_data[i][H_AMP] = 1 * g_state.DFT_m;      // # Store Goertzel magnitude
-        v_harm_data[i][H_PHASE] = g_state.DFT_arg;      // # Store Goertzel angle
+        //goertzel_handle = goertzel(&buf_voltage, &g_state, v_harm_data[i][H_FREQ], ADC_SAMPLE_RATE, gtz_config);
+       
+        ipdft_handle = do_ipdft(&buf_voltage, &ip_dft_data, 60*(i+1));
+        if(ipdft_handle != 0){
+            // # Store result into main data block
+            v_harm_data[i][H_AMP] = ip_dft_data.amplitude;
+            v_harm_data[i][H_PHASE] = ip_dft_data.phase_ang;
+            v_harm_data[i][H_FREQ] = ip_dft_data.frequency;
 
-        goertzel_handle = goertzel(&buf_current, &g_state, i_harm_data[i][H_FREQ], ADC_SAMPLE_RATE, gtz_config);
-        i_harm_data[i][H_AMP] = 1 * g_state.DFT_m;      // # Store Goertzel magnitude
-        i_harm_data[i][H_PHASE] = g_state.DFT_arg;      // # Store Goertzel angle
+            
+            ipdft_handle = do_ipdft(&buf_current, &ip_dft_data, 60*(i+1));
+            if(ipdft_handle != 0){
+                i_harm_data[i][H_AMP] = ip_dft_data.amplitude;
+                i_harm_data[i][H_PHASE] = ip_dft_data.phase_ang;
+                i_harm_data[i][H_FREQ] = ip_dft_data.frequency;
 
-        // Compute harmonic RMS value
-        v_harm_data[i][H_RMS] = (float) (v_harm_data[i][H_AMP] / M_SQRT2);
-        i_harm_data[i][H_RMS] = (float) (i_harm_data[i][H_AMP] / M_SQRT2);
 
-        // # Compute active and reactive power for the current harmonic
-        delta_phi = (float) (v_harm_data[0][H_PHASE] - i_harm_data[0][H_PHASE]);    // Use aux to compute delta phi
-        harm_active_power = (float) (v_harm_data[i][H_RMS] * i_harm_data[i][H_RMS]);// Used as aux to compute V*I
-        sm_data.reactive_power += (float) (harm_active_power * sinf(delta_phi));    // Sum harmonic piece into total active power 
+                // Compute harmonic RMS value
+                v_harm_data[i][H_RMS] = (float) (v_harm_data[i][H_AMP] / M_SQRT2);
+                i_harm_data[i][H_RMS] = (float) (i_harm_data[i][H_AMP] / M_SQRT2);
 
-        harm_active_power *= cosf(delta_phi);                                       // Multiply by cos(phi), now it is active power 
-        sm_data.active_power += harm_active_power;                                  // Sum harmonic piece into total active power 
-        
+                // # Compute active and reactive power for the current harmonic
+                delta_phi = (float) fabs(v_harm_data[i][H_PHASE] - i_harm_data[i][H_PHASE]);    // Use aux to compute delta phi
+                harm_active_power = (float) (v_harm_data[i][H_RMS] * i_harm_data[i][H_RMS]);// Used as aux to compute V*I
+                sm_data.reactive_power += (float) (harm_active_power * sinf(delta_phi));    // Sum harmonic piece into total active power 
 
-        // Compute sum of (Vrms_n / Vrms_1) and (Irms_n / Irms_1)
-        sm_data.THD_V += (float) (v_harm_data[i][H_RMS] / v_main_rms);
-        sm_data.THD_I += (float) (i_harm_data[i][H_RMS] / i_main_rms);
-        sm_data.THD_P += (float) (harm_active_power / main_active_power);
-         
+                sm_data.active_power += (float) (harm_active_power * cosf(delta_phi));                                  // Sum harmonic piece into total active power 
+                
+
+                // Compute sum of (Vrms_n / Vrms_1) and (Irms_n / Irms_1)
+                power_aux = (float) (v_harm_data[i][H_RMS] / v_main_rms);
+                sm_data.THD_V += (float) (power_aux*power_aux);
+
+                power_aux = (float) (i_harm_data[i][H_RMS] / i_main_rms);
+                sm_data.THD_I += (float) (power_aux*power_aux);
+
+                sm_data.THD_P += (float) (harm_active_power / main_active_power);
+                #if DEBUG_EN == true 
+                printf("*** CURRENT *** \n");
+                printf("- Amplitude: %f \n", i_harm_data[i][H_AMP]);
+                printf("- Angle: %f \n", i_harm_data[i][H_PHASE]);
+                printf("- RMS: %f \n", i_harm_data[i][H_RMS]);
+                printf("*** Voltage *** \n");
+                printf("- Amplitude: %f \n", v_harm_data[i][H_AMP]);
+                printf("- Angle: %f \n", v_harm_data[i][H_PHASE]);
+                printf("- RMS: %f \n", v_harm_data[i][H_RMS]);
+                printf("Delta phi: %f \n\n", delta_phi);
+                #endif
+                
+                
+
+
+            } else {
+                ESP_LOGE(TAG_SM, "# Error when computing IpDFT for current");
+            }
+        } else {
+            ESP_LOGE(TAG_SM, "# Error when computing IpDFT for voltage");
+        }
 
 
         // Compute 
@@ -183,15 +216,15 @@ uint8_t do_thd(){
 
 
     // # Compute THD_v and THD_i
-    sm_data.THD_V = fast_sqrt(sm_data.THD_V);
-    sm_data.THD_I = fast_sqrt(sm_data.THD_I);
+    sm_data.THD_V = sqrtf(sm_data.THD_V);
+    sm_data.THD_I = sqrtf(sm_data.THD_I);
 
     // # Compute Sqrt(1 - THD_v^2)*Sqrt(1 - THD_i^2) 
-    aux_thd_i_v  = (float) (fast_sqrt(1+sm_data.THD_V * sm_data.THD_V));
-    aux_thd_i_v *= (float) (fast_sqrt(1+sm_data.THD_I * sm_data.THD_I));
+    aux_thd_i_v  = (float) (sqrtf(1+sm_data.THD_V * sm_data.THD_V));
+    aux_thd_i_v *= (float) (sqrtf(1+sm_data.THD_I * sm_data.THD_I));
     
     // # Compute aparent power
-    sm_data.aparent_power  = (float) (v_main_rms * i_main_rms * aux_thd_i_v);
+    sm_data.aparent_power  = (float) (sm_data.v_rms * sm_data.i_rms * aux_thd_i_v);
 
     // # Compute FP
     sm_data.fp  = (float) (main_cosphi * (1 + sm_data.THD_P));
@@ -199,7 +232,10 @@ uint8_t do_thd(){
 
     sm_data.frequency = (sm_data.voltage_freq + sm_data.current_freq) / 2;
 
+    
     show_sm_values();
+    
+
     return 1;
 }
 void show_sm_values(){
@@ -222,20 +258,20 @@ void show_sm_values(){
     printf(" - THD_P           = %f\n", sm_data.THD_P);
     printf("============================================\n");      
 }
-uint8_t do_ipdft(Buffer *buf, IpDFT *ipdft){
+uint8_t do_ipdft(Buffer *buf, IpDFT *ipdft, uint16_t target_freq){
 
-
+    
     u16_t i = 0;
     u8_t epsilon;   
     float delta, delta_pi;
 
     // Frequecies and amplitudes around 60 Hz where Goertzel algorithm will be applied.
 	float dft[5][3] = {      
-		{0, 50, 0},                        // {amp, freq, phase}           
-		{0, 55, 0},                        // {amp, freq, phase}
-		{0, 60, 0},                        // {amp, freq, phase}
-		{0, 65, 0},                        // {amp, freq, phase}
-    	{0, 70, 0},                        // {amp, freq, phase}
+		{0, target_freq-10, 0},                        // {amp, freq, phase}           
+		{0, target_freq-5, 0},                        // {amp, freq, phase}
+		{0, target_freq, 0},                        // {amp, freq, phase}
+		{0, target_freq+5, 0},                        // {amp, freq, phase}
+    	{0, target_freq+10, 0},                        // {amp, freq, phase}
 	};
 
     // Config to compute applying Hanning Window and complete Goertzel calculus;
@@ -244,7 +280,10 @@ uint8_t do_ipdft(Buffer *buf, IpDFT *ipdft){
     // Compute goertzel for frequencies arround main frequency
     for (i = 0; i < G_MAIN_FREQ_NUM; i++){
         // # Apply Goertzel to current frequency
-        goertzel_handle = goertzel(buf, &g_state, dft[i][1], ADC_SAMPLE_RATE, gtz_config);
+        
+        //printf("Harmonic [%d] f\n", (uint16_t) (dft[i][1]));
+        
+        goertzel_handle = goertzel(buf, &g_state, (uint16_t) (dft[i][1]), ADC_SAMPLE_RATE, gtz_config);
         
         dft[i][0] = 1 * g_state.DFT_m;  // # Store Goertzel magnitude
         dft[i][2] = g_state.DFT_arg;    // # Store Goertzel angle
@@ -285,16 +324,18 @@ uint8_t do_ipdft(Buffer *buf, IpDFT *ipdft){
 
         // # Compute signal phase
         ipdft->phase_ang = dft[k][2] - delta_pi;
-
-        // Debug
-        printf("\nMaior amplitude = %f, k = %d\n", dft[k][0], k);
-        printf("- Epsilon: %d \n", epsilon);
-        printf("- delta: %f \n", delta);
-        printf("- k_m: %d \n", k_m);
-        printf("- delta_pi: %f \n", delta_pi);
-        printf("- Main frequency: %f\n", ipdft->frequency);
-        printf("- Main amplitude: %f\n", ipdft->amplitude);
-        printf("- Phase angle: %f\n", ipdft->phase_ang);
+        #if DEBUG_EN == true 
+        // printf("\nMaior amplitude = %f, k = %d\n", dft[k][0], k);
+        // printf("- Epsilon: %d \n", epsilon);
+        // printf("- delta: %f \n", delta);
+        // printf("- k_m: %d \n", k_m);
+        // printf("- delta_pi: %f \n", delta_pi);
+        // printf("- Main frequency: %f\n", ipdft->frequency);
+        // printf("- Main amplitude: %f\n", ipdft->amplitude);
+        // printf("- Phase angle: %f\n", ipdft->phase_ang);
+        #endif
+    
+ 
         return 1;
     } else {
         return 0;
@@ -306,11 +347,10 @@ uint8_t do_ipdft(Buffer *buf, IpDFT *ipdft){
 void do_rms(Buffer *voltage, Buffer *current){
     u32_t sum_voltage = 0;
     u32_t sum_current = 0;
-    //printf("\n - Max value: %u", voltage->max);
-    //printf("\n - Min value: %u\n", voltage->min);
+
     // # Calcula o valor de offset do sinal
-    u16_t voltage_offset = voltage->sum / voltage->size;//(voltage->max + voltage->min) / 2;
-    u16_t current_offset = current->sum / current->size;//(current->max + current->min) / 2;
+    u16_t voltage_offset = voltage->sum / voltage->size;
+    u16_t current_offset = current->sum / current->size;
     
     // Remove o offset do sinal e computa o somatório da sua potência
     for (u16_t i = 0; i < BUFFER_SIZE; i++){
@@ -322,16 +362,17 @@ void do_rms(Buffer *voltage, Buffer *current){
         sum_current += (uint32_t) (current->data[i]*current->data[i]);
     }
     // Cálculo do RMS
-    sm_data.v_rms = fast_sqrt(sum_voltage / BUFFER_SIZE);
-    sm_data.i_rms = fast_sqrt(sum_current / BUFFER_SIZE);
-
-    // # Debug
+    sm_data.v_rms = sqrtf(sum_voltage / BUFFER_SIZE);
+    sm_data.i_rms = sqrtf(sum_current / BUFFER_SIZE);
+    #if DEBUG_EN == true 
     printf("==================\n");
     printf("v_rms = %f\n", sm_data.v_rms );
     printf("i_rms = %f\n", sm_data.i_rms );
     printf("voltage_offset = %d\n", voltage_offset );
     printf("current_offset = %d\n", current_offset );
     printf("==================\n");
+    #endif
+
 }
 
 
@@ -432,7 +473,7 @@ void sample_read_task(void *parameters)
                 do_rms(&buf_voltage, &buf_current);
                 // # Apply goertzel to voltage signal
                 //ESP_LOGI(TAG_SM, "- Executing IPDFT for voltage");
-                ipdft_handle = do_ipdft(&buf_voltage, &ip_dft_data);
+                ipdft_handle = do_ipdft(&buf_voltage, &ip_dft_data, 60);
                 if(ipdft_handle != 0){
                     // # Store result into main data block
                     sm_data.voltage_amp = ip_dft_data.amplitude;
@@ -440,7 +481,7 @@ void sample_read_task(void *parameters)
                     sm_data.voltage_freq = ip_dft_data.frequency;
                     //ESP_LOGI(TAG_SM, "- Executing IPDFT for current");
                     // # Apply goertzel to current signal
-                    ipdft_handle = do_ipdft(&buf_current, &ip_dft_data);
+                    ipdft_handle = do_ipdft(&buf_current, &ip_dft_data, 60);
                     if(ipdft_handle != 0){
                         // # Store result into main data block
                         sm_data.current_amp = ip_dft_data.amplitude;
@@ -467,6 +508,7 @@ void sample_read_task(void *parameters)
                 time_spent = (float)(end_time - start_time) / 1000;
                 printf("smart meter execution time = %f ms\n", time_spent);
                 //loop_ctrl = 1;
+                
             }
         }
             
@@ -551,23 +593,29 @@ void test_functions(void *parameters) {
             }*/
             do_rms(&buf_voltage, &buf_current);
             // # Apply goertzel to voltage signal
-            ESP_LOGI(TAG_SM, "- Executing IPDFT for voltage");
-            ipdft_handle = do_ipdft(&buf_voltage, &ip_dft_data);
+            #if DEBUG_EN == true 
+                ESP_LOGI(TAG_SM, "- Executing IPDFT for voltage"); 
+            #endif
+            ipdft_handle = do_ipdft(&buf_voltage, &ip_dft_data, 60);
             if(ipdft_handle != 0){
                 // # Store result into main data block
                 sm_data.voltage_amp = ip_dft_data.amplitude;
                 sm_data.voltage_phase = ip_dft_data.phase_ang;
                 sm_data.voltage_freq = ip_dft_data.frequency;
-                ESP_LOGI(TAG_SM, "- Executing IPDFT for current");
+                #if DEBUG_EN == true 
+                    ESP_LOGI(TAG_SM, "- Executing IPDFT for current"); 
+                #endif
                 // # Apply goertzel to current signal
-                ipdft_handle = do_ipdft(&buf_current, &ip_dft_data);
+                ipdft_handle = do_ipdft(&buf_current, &ip_dft_data, 60);
                 if(ipdft_handle != 0){
                     // # Store result into main data block
                     sm_data.current_amp = ip_dft_data.amplitude;
                     sm_data.current_phase = ip_dft_data.phase_ang;
                     sm_data.current_freq = ip_dft_data.frequency;
-
-                    ESP_LOGI(TAG_SM, "- Executing THD and general calculations");
+                    #if DEBUG_EN == true 
+                        ESP_LOGI(TAG_SM, "- Executing THD and general calculations");
+                    #endif
+                    
                     do_thd();
 
                 } else {
@@ -586,6 +634,7 @@ void test_functions(void *parameters) {
             // Calculating time spent
             time_spent = (float)(end_time - start_time) / 1000;
             printf("smart meter execution time = %f ms\n", time_spent);
+            
             //loop_ctrl = 1;
         }
     }
@@ -605,7 +654,7 @@ void app_main(void)
 	// Print info to show main task is running
 	ESP_LOGI(TAG_SM, "# Running app_main in core %d", xPortGetCoreID());
 
-    /**/
+    /*
     // Log task creation
 	ESP_LOGI(TAG_SM, "# Creating signal_generator task");
 
@@ -623,7 +672,7 @@ void app_main(void)
 	if (task_create_ret != pdPASS){ ESP_LOGE(TAG_SM, "Error creating signal_generator task"); }
 	// Delay 
 	vTaskDelay(10000 / portTICK_PERIOD_MS);
-    
+    */
     // Log task creation
 	ESP_LOGI(TAG_SM, "# Creating sample_read_task");
 
