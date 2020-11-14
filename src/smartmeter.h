@@ -11,6 +11,9 @@
 //#include <freertos/semphr.h>
 #include "esp_err.h"						// ESP-IDF library for error codes and error handling
 #include "esp_log.h"						// ESP-IDF logging library
+#include "nvs_flash.h"
+#include "nvs.h"
+#include "esp_system.h"
 
 #include <string.h>                         // C standard library
 #include <stdio.h>                          // C standard library
@@ -92,7 +95,7 @@
 
 
 
-#define DEBUG_EN            (true)                                        // Enable debug mode
+#define DEBUG_EN            (false)                                        // Enable debug mode
 
 #define ARRAY_LEN(arr) ((int) (sizeof (arr) / sizeof (arr)[0]))   // Macro to compute array size
 
@@ -130,6 +133,8 @@ static const char *TAG_SM = "SM";	        // Define general log tag
 
 // Task handles
 TaskHandle_t sample_read_task_handle = NULL;	    // sample_read_task handle
+TaskHandle_t publish_task_handle = NULL;	    // publish_mqtt_payload handle
+TaskHandle_t setup_wifi_task_handle = NULL;	    // setup_wifi handle
 TaskHandle_t signal_generator_task_handle = NULL;	// signal_generator_task handle
 
 
@@ -146,6 +151,9 @@ uint8_t do_ipdft(Buffer *buf, IpDFT *ipdft, u16_t harmonic_index);
 // Function to convert adc read binary data to mV
 uint16_t convert_to_voltage(uint16_t value);
 void show_sm_values();
+
+void save_to_flash();
+void get_flash_data();
 
 // End of the inclusion guard
 #endif

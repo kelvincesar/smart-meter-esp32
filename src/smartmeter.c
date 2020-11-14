@@ -3,12 +3,15 @@
 
 // Global variable
 
+
 SmartMeter sm_data;                     // Store smart meter main variables data;    
 IpDFT ip_dft_data;                      // Store IpDFT algorithm return values
 
+
+
 static void adc_i2s_init(void)
 {
-
+    
     static const i2s_config_t i2s_config = {
         .mode = I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_ADC_BUILT_IN,
         .sample_rate = ADC_SAMPLE_RATE*2,
@@ -232,9 +235,10 @@ uint8_t do_thd(){
 
     sm_data.frequency = (sm_data.voltage_freq + sm_data.current_freq) / 2;
 
-    
-    show_sm_values();
-    
+    //save_to_flash();
+    //show_sm_values();
+    sm_push(&sm_data);
+
 
     return 1;
 }
@@ -258,6 +262,137 @@ void show_sm_values(){
     printf(" - THD_P           = %f\n", sm_data.THD_P);
     printf("============================================\n");      
 }
+void get_flash_data(){
+    // Initialize NVS
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // NVS partition was truncated and needs to be erased
+        // Retry nvs_flash_init
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK( err );
+
+    // Open
+    printf("\n");
+    printf("Opening Non-Volatile Storage (NVS) handle... ");
+    nvs_handle_t my_handle;
+    err = nvs_open("storage", NVS_READWRITE, &my_handle);
+    if (err != ESP_OK) {
+        printf("Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+    } else {
+        printf("Done\n");
+    }
+    int32_t aux;
+    err = nvs_get_i32(my_handle, "v_rms", &aux);
+    sm_data.v_rms           = (float) (aux);
+    err = nvs_get_i32(my_handle, "i_rms", &aux);
+    sm_data.i_rms           = (float) (aux);
+    err = nvs_get_i32(my_handle, "aparent_power", &aux);
+    sm_data.aparent_power   = (float) (aux);
+    err = nvs_get_i32(my_handle, "active_power", &aux);
+    sm_data.active_power    = (float) (aux);
+    err = nvs_get_i32(my_handle, "reactive_power", &aux);
+    sm_data.reactive_power  = (float) (aux);
+    err = nvs_get_i32(my_handle, "frequency", &aux);
+    sm_data.frequency       = (float) (aux);
+    err = nvs_get_i32(my_handle, "voltage_amp", &aux);
+    sm_data.voltage_amp     = (float) (aux);
+    err = nvs_get_i32(my_handle, "voltage_freq", &aux);
+    sm_data.voltage_freq    = (float) (aux);
+    err = nvs_get_i32(my_handle, "voltage_phase", &aux);
+    sm_data.voltage_phase   = (float) (aux);
+    err = nvs_get_i32(my_handle, "current_amp", &aux);
+    sm_data.current_amp     = (float) (aux);
+    err = nvs_get_i32(my_handle, "current_phase", &aux);
+    sm_data.current_phase   = (float) (aux);
+    err = nvs_get_i32(my_handle, "current_freq", &aux);
+    sm_data.current_freq    = (float) (aux);
+    err = nvs_get_i32(my_handle, "fp", &aux);
+    sm_data.fp              = (float) (aux);
+    err = nvs_get_i32(my_handle, "THD_V", &aux);
+    sm_data.THD_V           = (float) (aux);
+    err = nvs_get_i32(my_handle, "THD_I", &aux);
+    sm_data.THD_I           = (float) (aux);
+    err = nvs_get_i32(my_handle, "THD_P", &aux); 
+    sm_data.THD_P           = (float) (aux);
+   
+    show_sm_values();
+}
+void save_to_flash(){
+    // Initialize NVS
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // NVS partition was truncated and needs to be erased
+        // Retry nvs_flash_init
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK( err );
+
+    // Open
+    printf("\n");
+    printf("Opening Non-Volatile Storage (NVS) handle... ");
+    nvs_handle_t my_handle;
+    err = nvs_open("storage", NVS_READWRITE, &my_handle);
+    if (err != ESP_OK) {
+        printf("Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+    } else {
+        printf("Done\n");
+
+        // Read
+        printf("Reading restart counter from NVS ... ");
+        
+        
+        // Write
+        int32_t aux = 0;
+        aux = (int32_t) (sm_data.v_rms);
+        err = nvs_set_i32(my_handle, "v_rms", sm_data.v_rms);
+        aux = (int32_t) (sm_data.i_rms);
+        err = nvs_set_i32(my_handle, "i_rms", sm_data.i_rms);
+        aux = (int32_t) (sm_data.aparent_power);
+        err = nvs_set_i32(my_handle, "aparent_power", sm_data.aparent_power);
+        aux = (int32_t) (sm_data.active_power);
+        err = nvs_set_i32(my_handle, "active_power", sm_data.active_power);
+        aux = (int32_t) (sm_data.reactive_power);
+        err = nvs_set_i32(my_handle, "reactive_power", sm_data.reactive_power);
+        aux = (int32_t) (sm_data.frequency);
+        err = nvs_set_i32(my_handle, "frequency", sm_data.frequency);
+        aux = (int32_t) (sm_data.voltage_amp);
+        err = nvs_set_i32(my_handle, "voltage_amp", sm_data.voltage_amp);
+        aux = (int32_t) (sm_data.voltage_freq);
+        err = nvs_set_i32(my_handle, "voltage_freq", sm_data.voltage_freq);
+        aux = (int32_t) (sm_data.voltage_phase);
+        err = nvs_set_i32(my_handle, "voltage_phase", sm_data.voltage_phase);
+        aux = (int32_t) (sm_data.current_amp);
+        err = nvs_set_i32(my_handle, "current_amp", sm_data.current_amp);
+        aux = (int32_t) (sm_data.current_phase);
+        err = nvs_set_i32(my_handle, "current_phase", sm_data.current_phase);
+        aux = (int32_t) (sm_data.current_freq);
+        err = nvs_set_i32(my_handle, "current_freq", sm_data.current_freq);
+        aux = (int32_t) (sm_data.fp);
+        err = nvs_set_i32(my_handle, "fp", sm_data.fp);
+        aux = (int32_t) (sm_data.THD_V);
+        err = nvs_set_i32(my_handle, "THD_V", sm_data.THD_V);
+        aux = (int32_t) (sm_data.THD_I);
+        err = nvs_set_i32(my_handle, "THD_I", sm_data.THD_I);
+        aux = (int32_t) (sm_data.THD_P);
+        err = nvs_set_i32(my_handle, "THD_P", sm_data.THD_P);
+        printf((err != ESP_OK) ? "Failed!\n" : "Done\n");
+
+        printf("Committing updates in NVS ... ");
+        err = nvs_commit(my_handle);
+        printf((err != ESP_OK) ? "Failed!\n" : "Done\n");
+
+        // Close
+        nvs_close(my_handle);
+    }
+
+
+
+
+}
+
 uint8_t do_ipdft(Buffer *buf, IpDFT *ipdft, uint16_t target_freq){
 
     
@@ -308,6 +443,8 @@ uint8_t do_ipdft(Buffer *buf, IpDFT *ipdft, uint16_t target_freq){
         delta =  (float) (dft[k + epsilon][0] - dft[k - epsilon][0]);
         delta /= (float) (dft[k - epsilon][0] + 2* dft[k][0] + dft[k + epsilon][0]);
         delta *= (float) (2 * epsilon);
+
+
         // # Delta deve estar entre 0.5 <= δ < 0.5 
         if(delta >= 0.5) delta = 0.5;
         if(delta < -0.5) delta = -0.5;
@@ -349,8 +486,8 @@ void do_rms(Buffer *voltage, Buffer *current){
     u32_t sum_current = 0;
 
     // # Calcula o valor de offset do sinal
-    u16_t voltage_offset = voltage->sum / voltage->size;
-    u16_t current_offset = current->sum / current->size;
+    u16_t voltage_offset = (voltage->sum / voltage->size);
+    u16_t current_offset = (current->sum / current->size);
     
     // Remove o offset do sinal e computa o somatório da sua potência
     for (u16_t i = 0; i < BUFFER_SIZE; i++){
@@ -364,14 +501,15 @@ void do_rms(Buffer *voltage, Buffer *current){
     // Cálculo do RMS
     sm_data.v_rms = sqrtf(sum_voltage / BUFFER_SIZE);
     sm_data.i_rms = sqrtf(sum_current / BUFFER_SIZE);
-    #if DEBUG_EN == true 
+    
     printf("==================\n");
     printf("v_rms = %f\n", sm_data.v_rms );
     printf("i_rms = %f\n", sm_data.i_rms );
     printf("voltage_offset = %d\n", voltage_offset );
     printf("current_offset = %d\n", current_offset );
     printf("==================\n");
-    #endif
+    //#if DEBUG_EN == true 
+    //#endif
 
 }
 
@@ -387,14 +525,17 @@ bool buffers_verify(){
     y = 0.8165x + 143.21
 */ 
 uint16_t convert_to_voltage(uint16_t value){
-    //return (float) (value * 0.8165 + 143.21);
-    return (value * 3300 / 4095);  // To compare with generated values
+    return (float) (value * 0.8165 + 143.21);
+    //return (value * 3300 / 4095);  // To compare with generated values
 }
 
 void sample_read_task(void *parameters)
 {
     // # Define ADC Characteristics for convertion
     esp_adc_cal_characteristics_t cal;
+    // Local variables
+	BaseType_t task_create_ret;				// Return of task create
+
     esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, ADC_V_REF, &cal);
 
     // # Struct to moving average
@@ -445,7 +586,7 @@ void sample_read_task(void *parameters)
                     break;
                 case ADC_VOLTAGE_CHANNEL:
                     // Realiza a conversão da amostra para tensão de acordo com calibração
-                    sample = convert_to_voltage(ADC_GET_MEASURE(buf[i]));
+                    sample = ADC_GET_MEASURE(buf[i]);//convert_to_voltage(ADC_GET_MEASURE(buf[i]));
                     sample = Moving_Average_Compute(sample, &filterStruct);
                     // Salva no buffer de tensão
                     buffer_handle = buffer_push(&buf_voltage, sample);
@@ -454,6 +595,7 @@ void sample_read_task(void *parameters)
                     ESP_LOGE(TAG_SM, "# Unknown channel %d", buf[i]>>12);
 
             }
+            //printf("[%d]: %d\n", buf[i] >> 12, ADC_GET_MEASURE(buf[i]));
         }
         if(buf_voltage.size != buf_current.size){
             ESP_LOGE(TAG_SM, "# Voltage buffer and current doesn't have the same size [%d/%d]", buf_voltage.size, buf_current.size);
@@ -467,19 +609,23 @@ void sample_read_task(void *parameters)
                 float time_spent = 0;	            // Time spent in the execution [s]
                 start_time = esp_timer_get_time();      // Debug
                 // # Compute RMS and remove DC offset from signals;
-                /*for(uint16_t x = 0; x < buf_voltage.size ; x++){
-                    printf("%u,%d;", x, buf_voltage.data[x]);
-                }*/
+                //for(uint16_t x = 0; x < buf_voltage.size ; x++){
+                //    printf("%u,%d;", x, buf_voltage.data[x]);
+                //}
                 do_rms(&buf_voltage, &buf_current);
                 // # Apply goertzel to voltage signal
-                //ESP_LOGI(TAG_SM, "- Executing IPDFT for voltage");
+                #if DEBUG_EN == true 
+                    ESP_LOGI(TAG_SM, "- Executing IPDFT for voltage"); 
+                #endif
                 ipdft_handle = do_ipdft(&buf_voltage, &ip_dft_data, 60);
                 if(ipdft_handle != 0){
                     // # Store result into main data block
                     sm_data.voltage_amp = ip_dft_data.amplitude;
                     sm_data.voltage_phase = ip_dft_data.phase_ang;
                     sm_data.voltage_freq = ip_dft_data.frequency;
-                    //ESP_LOGI(TAG_SM, "- Executing IPDFT for current");
+                    #if DEBUG_EN == true 
+                        ESP_LOGI(TAG_SM, "- Executing IPDFT for current"); 
+                    #endif
                     // # Apply goertzel to current signal
                     ipdft_handle = do_ipdft(&buf_current, &ip_dft_data, 60);
                     if(ipdft_handle != 0){
@@ -487,8 +633,10 @@ void sample_read_task(void *parameters)
                         sm_data.current_amp = ip_dft_data.amplitude;
                         sm_data.current_phase = ip_dft_data.phase_ang;
                         sm_data.current_freq = ip_dft_data.frequency;
-
-                        //ESP_LOGI(TAG_SM, "- Executing THD and general calculations");
+                        #if DEBUG_EN == true 
+                            ESP_LOGI(TAG_SM, "- Executing THD and general calculations");
+                        #endif
+                        
                         do_thd();
 
                     } else {
@@ -507,8 +655,22 @@ void sample_read_task(void *parameters)
                 // Calculating time spent
                 time_spent = (float)(end_time - start_time) / 1000;
                 printf("smart meter execution time = %f ms\n", time_spent);
-                //loop_ctrl = 1;
-                
+
+
+                if( sm_get_counter() >= SM_TIMESERIE_SIZE ){
+                        // Create main task to sample and process signals
+                    task_create_ret = xTaskCreatePinnedToCore(
+                    publish_mqtt_payload,					// Function executed in the task
+                    "MQTTPUB",					            // Task name (for debug)
+                    8000,								// Stack size in bytes
+                    NULL,								// Parameter to pass to the function
+                    1,									// Task priority
+                    &publish_task_handle,			// Used to pass back a handle by which the created task can be referenced
+                    1);									// CPU core ID
+
+                }
+
+                loop_ctrl = 0;
             }
         }
             
@@ -653,7 +815,18 @@ void app_main(void)
 	BaseType_t task_create_ret;				// Return of task create
 	// Print info to show main task is running
 	ESP_LOGI(TAG_SM, "# Running app_main in core %d", xPortGetCoreID());
+	// Create task to generate sine wave
+	task_create_ret = xTaskCreatePinnedToCore(
+		setup_wifi,				// Function executed in the task
+		"SWIF",					            // Task name (for debug)
+		4096,								// Stack size in bytes
+		NULL,								// Parameter to pass to the function
+		1,									// Task priority
+		&setup_wifi_task_handle,		// Used to pass back a handle by which the created task can be referenced
+		1);									// CPU core ID
 
+    // Check task creation error
+	if (task_create_ret != pdPASS){ ESP_LOGE(TAG_SM, "Error creating setup_wifi task"); }
     /*
     // Log task creation
 	ESP_LOGI(TAG_SM, "# Creating signal_generator task");
@@ -673,13 +846,16 @@ void app_main(void)
 	// Delay 
 	vTaskDelay(10000 / portTICK_PERIOD_MS);
     */
+    //get_flash_data();
+
+    //vTaskDelay(10000 / portTICK_PERIOD_MS);
     // Log task creation
 	ESP_LOGI(TAG_SM, "# Creating sample_read_task");
 
     
-	// Create task to write audio to wav file in SD card
+	// Create main task to sample and process signals
 	task_create_ret = xTaskCreatePinnedToCore(
-		test_functions,					// Function executed in the task
+		sample_read_task,					// Function executed in the task
 		"SRT",					            // Task name (for debug)
 		32000,								// Stack size in bytes
 		NULL,								// Parameter to pass to the function
