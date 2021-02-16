@@ -6,7 +6,7 @@
 #include "stdint.h"
 
 /* Definitions ---------------------------------------------------------------*/
-#define WindowLength 10
+#define WindowLength 32
 
 /* TypeDefs ------------------------------------------------------------------*/
 typedef struct{

@@ -5,6 +5,15 @@ uint16_t sm_get_counter(){
     return sm_ts.counter;
 }
 // Function used to insert data into timeseries struct 
+void sm_data_converter (SmartMeter *data){
+    data->v_rms          *= VOLT_RATIO;
+    data->i_rms          /= CURR_RATIO;
+    data->aparent_power  *= (VOLT_RATIO / CURR_RATIO);
+    data->active_power   *= (VOLT_RATIO / CURR_RATIO);
+    data->reactive_power *= (VOLT_RATIO / CURR_RATIO);
+    data->voltage_amp    *= VOLT_RATIO;
+    data->current_amp    /= CURR_RATIO;
+}
 int sm_push (SmartMeter *data){
     // Store data into timeseries data block
     sm_ts.data.vRms   += data->v_rms;
@@ -13,7 +22,7 @@ int sm_push (SmartMeter *data){
     sm_ts.data.aPower += data->active_power;
     sm_ts.data.rPower += data->reactive_power;
     sm_ts.data.freq   += data->frequency;
-    sm_ts.data.fp     += data->fp;
+    sm_ts.data.fp     = data->fp;
     sm_ts.data.THDV   += data->THD_V;
     sm_ts.data.THDI   += data->THD_I;
     sm_ts.data.THDP   += data->THD_P;
@@ -23,7 +32,7 @@ int sm_push (SmartMeter *data){
     sm_ts.data.cAmp   += data->current_amp;
     sm_ts.data.cPhase += data->current_phase;
     sm_ts.data.cFreq  += data->current_freq;
-    sm_ts.data.E_P    += data->active_power * WINDOW_LENGTH;
+    sm_ts.data.E_P    += data->active_power   * WINDOW_LENGTH;
     sm_ts.data.E_Q    += data->reactive_power * WINDOW_LENGTH;
     
     // Compute new max
@@ -60,7 +69,7 @@ void sm_compute_payload(SM_Payload *payload){
     payload->aPower    = sm_ts.data.aPower   / sm_ts.counter;
     payload->rPower    = sm_ts.data.rPower   / sm_ts.counter;
     payload->freq      = sm_ts.data.freq     / sm_ts.counter;
-    payload->fp        = sm_ts.data.fp       / sm_ts.counter;
+    payload->fp        = sm_ts.data.fp;
     payload->THDV      = sm_ts.data.THDV     / sm_ts.counter;
     payload->THDI      = sm_ts.data.THDI     / sm_ts.counter;
     payload->THDP      = sm_ts.data.THDP     / sm_ts.counter;
@@ -135,7 +144,24 @@ void sm_init_data () {
     sm_ts.data.cFreq    = 0;
     sm_ts.counter = 0;
 }
-
+void SmartMeter_Struct_Reset (SmartMeter *sm) {
+    sm->v_rms = 0;
+	sm->i_rms = 0;
+	sm->aparent_power = 0;
+	sm->active_power = 0;
+    sm->reactive_power = 0;
+    sm->frequency = 0;
+    sm->voltage_amp = 0;
+    sm->voltage_freq = 0;
+    sm->voltage_phase = 0;
+    sm->current_amp = 0;
+    sm->current_phase = 0;
+    sm->current_freq = 0;
+    sm->fp = 0;
+    sm->THD_V = 0;
+    sm->THD_I = 0;
+    sm->THD_P = 0;
+}
 // Function used to insert data into buffer and contabilize it size;
 int buffer_push (Buffer *buf, int16_t value){
     // Verify if buffer size is not full

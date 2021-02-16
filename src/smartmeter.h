@@ -53,10 +53,10 @@
 
 // ## DEFINES ##
 // # Current sensor configuration:
-#define SENS_CURR_RATIO         (1)                           // Current sensor ratio;
+
 #define ADC_CURRENT_CHANNEL     (0)                           // Define channel used to measure current
 // # Voltage sensor configuration:
-#define SENS_VOLT_RATIO         (0.1884)                      // Voltage sensor ratio; 3.3/4095 * (2/3.3)*311
+
 #define SENS_DC_OFFSET          ((2450 - 180) / 2)          // Voltage sensor DC offset value in [mV]
 #define ADC_VOLTAGE_CHANNEL     (3)                           // Define channel used to measure voltage
 
@@ -95,7 +95,8 @@
 
 
 
-#define DEBUG_EN            (false)                                        // Enable debug mode
+#define DEBUG_EN            (false)                           // Enable debug mode
+#define ENABLE_IOT         (true)                            // Disable IoT functions 
 
 #define ARRAY_LEN(arr) ((int) (sizeof (arr) / sizeof (arr)[0]))   // Macro to compute array size
 

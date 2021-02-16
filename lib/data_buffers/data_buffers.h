@@ -6,6 +6,10 @@
 #define BUFFER_SIZE         2048        // Define buffer size for current and voltage
 #define SM_TIMESERIE_SIZE   50          // Define smart meter main measures timeseires size
 #define WINDOW_LENGTH       (0.2)       // Define smart meter window length (delta T)
+
+#define VOLT_RATIO              (0.6043648)       //       (0.4444671)        // Voltage sensor ratio [Vin / Vout] 
+#define CURR_RATIO              (34.32)          //           (66)         // Current sensor ratio [V/A] 
+
 // # Buffer struct
 typedef struct {
     int16_t data[BUFFER_SIZE];      // Array to store values
@@ -92,6 +96,8 @@ void buffer_clean (Buffer *buf);
 // # Timeseries functions
 int sm_push (SmartMeter *data);
 void sm_compute_payload(SM_Payload *payload);
+void sm_data_converter (SmartMeter *data);
+void SmartMeter_Struct_Reset (SmartMeter *sm) ;
 
 void sm_init_data ();
 uint16_t sm_get_counter();
